@@ -8,13 +8,17 @@ Stub. To flesh out:
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from src.agents._base import stub_run
-from src.orchestrator.graph import AgentState
+
+if TYPE_CHECKING:
+    from src.orchestrator.graph import AgentState
 
 SYSTEM_PROMPT = """You are the Calendar & Networking Agent. You manage the user's
 schedule, surface follow-ups, and maintain their relationship notes in 04-People/
 in Obsidian. You ALWAYS confirm before creating calendar events or sending invites."""
 
 
-async def run(state: AgentState) -> dict:
+async def run(state: "AgentState") -> dict:
     return await stub_run(state, "calendar")

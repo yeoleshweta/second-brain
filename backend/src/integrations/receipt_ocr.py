@@ -1,4 +1,4 @@
-"""Receipt OCR using Claude's vision capability.
+"""Receipt OCR using OpenAI's vision capability.
 
 Pass a receipt image (jpg/png/webp) and get structured items + total back.
 This is dramatically simpler and more accurate than running Tesseract.
@@ -9,8 +9,8 @@ import base64
 import json
 from pathlib import Path
 
-from anthropic import AsyncAnthropic
 from loguru import logger
+from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from src.config import get_settings
@@ -58,9 +58,9 @@ No markdown fences, no commentary, just the JSON object."""
 
 
 async def parse_receipt(image_path: Path | bytes, media_type: str = "image/jpeg") -> ParsedReceipt:
-    """Send a receipt image to Claude and parse the structured response."""
+    """Send a receipt image to OpenAI and parse the structured response."""
     settings = get_settings()
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
 
     if isinstance(image_path, Path):
         image_bytes = image_path.read_bytes()
@@ -78,28 +78,27 @@ async def parse_receipt(image_path: Path | bytes, media_type: str = "image/jpeg"
     image_b64 = base64.standard_b64encode(image_bytes).decode("ascii")
 
     logger.info("Parsing receipt ({} bytes, {})", len(image_bytes), media_type)
-    resp = await client.messages.create(
-        model=settings.anthropic_model_main,
+    resp = await client.chat.completions.create(
+        model=settings.openai_model_main,
         max_tokens=2000,
+        response_format={"type": "json_object"},
         messages=[
             {
                 "role": "user",
                 "content": [
+                    {"type": "text", "text": _PROMPT},
                     {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": image_b64,
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{media_type};base64,{image_b64}",
                         },
                     },
-                    {"type": "text", "text": _PROMPT},
                 ],
             }
         ],
     )
 
-    raw = resp.content[0].text.strip()  # type: ignore[union-attr]
+    raw = (resp.choices[0].message.content or "").strip()
     # Defensive: strip code fences if the model added them anyway
     if raw.startswith("```"):
         raw = raw.split("```")[1]

@@ -5,9 +5,9 @@ description = "Multi-agent personal AI backend"
 requires-python = ">=3.11"
 dependencies = [
     # LLM + agent framework
-    "anthropic>=0.40.0",
+    "openai>=1.50.0",
     "langgraph>=0.2.50",
-    "langchain-anthropic>=0.3.0",
+    "langchain-openai>=0.2.0",
 
     # MCP — standard tool integration
     "mcp>=1.0.0",

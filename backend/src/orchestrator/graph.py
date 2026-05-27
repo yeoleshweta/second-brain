@@ -37,13 +37,8 @@ def _route(state: AgentState) -> str:
 
 
 async def _general_node(state: AgentState) -> dict:
-    from src.integrations import ObsidianClient
-    async with ObsidianClient() as client:
-        path = await client.append_to_inbox(state["user_message"])
-    return {
-        "reply": f"Got it — captured to `{path}`.",
-        "obsidian_path": path,
-    }
+    from src.agents._base import stub_run
+    return await stub_run(state, "general")
 
 
 def build_graph():

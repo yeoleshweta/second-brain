@@ -179,6 +179,7 @@ def main() -> None:
         host=settings.app_host,
         port=settings.app_port,
         reload=settings.environment == "development",
+        reload_excludes=[".venv", "logs", "data", "__pycache__"],
     )
 
 

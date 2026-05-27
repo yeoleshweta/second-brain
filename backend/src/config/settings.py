@@ -16,9 +16,9 @@ class Settings(BaseSettings):
     )
 
     # LLM
-    anthropic_api_key: str = Field(..., description="Anthropic API key")
-    anthropic_model_main: str = "claude-sonnet-4-5"
-    anthropic_model_cheap: str = "claude-haiku-4-5"
+    openai_api_key: str = Field(..., description="OpenAI API key")
+    openai_model_main: str = "gpt-4o"
+    openai_model_cheap: str = "gpt-4o-mini"
 
     # App
     app_host: str = "127.0.0.1"

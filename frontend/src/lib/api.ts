@@ -3,6 +3,10 @@ import type { Attachment, ChatStreamEvent } from '@/types'
 // In production you'd load this from a setting. For local dev the proxy handles it.
 const API_TOKEN = import.meta.env.VITE_API_TOKEN || 'change-me-to-a-long-random-string'
 
+// If VITE_API_URL is set, hit the backend directly (bypasses Vite's proxy, which
+// doesn't reliably stream SSE responses). Empty/unset = relative URLs via proxy.
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+
 function authHeaders(): HeadersInit {
   return {
     Authorization: `Bearer ${API_TOKEN}`,
@@ -16,7 +20,7 @@ export async function* streamChat(
   message: string,
   attachments: Attachment[] = [],
 ): AsyncGenerator<ChatStreamEvent> {
-  const resp = await fetch('/api/chat', {
+  const resp = await fetch(`${API_BASE}/api/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -59,6 +63,7 @@ export async function* streamChat(
       }
       if (data) {
         yield { event: eventName as ChatStreamEvent['event'], data }
+        if (eventName === 'done' || eventName === 'error') return
       }
     }
   }
@@ -67,7 +72,7 @@ export async function* streamChat(
 export async function uploadFile(file: File): Promise<Attachment> {
   const form = new FormData()
   form.append('file', file)
-  const resp = await fetch('/api/upload', {
+  const resp = await fetch(`${API_BASE}/api/upload`, {
     method: 'POST',
     headers: authHeaders(),
     body: form,
@@ -83,14 +88,14 @@ export async function uploadFile(file: File): Promise<Attachment> {
 }
 
 export async function getPlaidLinkToken(): Promise<string> {
-  const resp = await fetch('/api/plaid/link-token', { headers: authHeaders() })
+  const resp = await fetch(`${API_BASE}/api/plaid/link-token`, { headers: authHeaders() })
   if (!resp.ok) throw new Error(`Link token failed: ${resp.status}`)
   const data = await resp.json()
   return data.link_token
 }
 
 export async function plaidExchange(publicToken: string): Promise<void> {
-  const resp = await fetch('/api/plaid/exchange', {
+  const resp = await fetch(`${API_BASE}/api/plaid/exchange`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

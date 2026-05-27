@@ -1,10 +1,10 @@
-"""Intent classification using the cheap Claude model."""
+"""Intent classification using the cheap OpenAI model."""
 from __future__ import annotations
 
 from typing import Literal
 
-from anthropic import AsyncAnthropic
 from loguru import logger
+from openai import AsyncOpenAI
 
 from src.config import get_settings
 
@@ -24,15 +24,17 @@ Respond with EXACTLY ONE WORD. No punctuation, no explanation."""
 
 async def classify_intent(message: str) -> Intent:
     settings = get_settings()
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
     try:
-        resp = await client.messages.create(
-            model=settings.anthropic_model_cheap,
+        resp = await client.chat.completions.create(
+            model=settings.openai_model_cheap,
             max_tokens=10,
-            system=_SYSTEM,
-            messages=[{"role": "user", "content": message}],
+            messages=[
+                {"role": "system", "content": _SYSTEM},
+                {"role": "user", "content": message},
+            ],
         )
-        raw = resp.content[0].text.strip().lower()  # type: ignore[union-attr]
+        raw = (resp.choices[0].message.content or "").strip().lower()
     except Exception as e:
         logger.warning("Intent classification failed: {}", e)
         return "general"
