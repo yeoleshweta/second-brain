@@ -1,0 +1,41 @@
+# Cursor Rules — Second Brain
+
+You're helping build a personal multi-agent AI system. Always read `docs/architecture.md` before non-trivial changes.
+
+## Stack
+- Backend: Python 3.11+, FastAPI, LangGraph, Anthropic Claude
+- Frontend: React + Vite + TypeScript + Tailwind
+- Integrations via MCP wherever practical
+- Single-user, local-only (Mac), no multi-tenancy needed
+
+## Conventions
+- Backend: type hints everywhere. Run `ruff check` before committing.
+- Async by default. `httpx.AsyncClient`, not `requests`.
+- Frontend: TypeScript strict mode. Components in PascalCase files.
+- Tailwind utilities only — no inline styles, no CSS modules unless asked.
+- Config flows through `src/config/settings.py` (backend) and `import.meta.env` (frontend).
+- Logging via `loguru` on backend. No `print()` in src/.
+- No secrets in code. `.env` only, gitignored.
+
+## Agents
+Each agent in `backend/src/agents/<name>.py`:
+- `SYSTEM_PROMPT` constant
+- async `run(state)` function
+- Registered in `orchestrator/router.py` classifier
+
+## Frontend / Backend contract
+- All API routes under `/api/`
+- Chat returns SSE (`text/event-stream`), not plain JSON
+- File uploads go through `/api/upload`, then referenced by `file_id`
+- Bearer token auth: header `Authorization: Bearer <APP_API_TOKEN>`
+
+## Security
+- Finance agent: READ ONLY. Never moves money.
+- Confirmation gate for any action that sends external messages, creates calendar events, etc.
+- Plaid access_tokens stored encrypted at rest.
+- Don't log full secrets — `{t[:4]}...{t[-4:]}` only.
+
+## When in doubt
+- Ask before adding deps.
+- Ask before introducing a new external service.
+- Ask before changing `src/storage/models.py` (data model is sensitive).

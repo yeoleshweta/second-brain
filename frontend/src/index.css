@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+  }
+}
+
+/* Markdown content styling */
+.prose-chat {
+  @apply text-ink-100 leading-relaxed;
+}
+.prose-chat code {
+  @apply bg-ink-700 text-ink-100 px-1 py-0.5 rounded text-sm;
+}
+.prose-chat pre {
+  @apply bg-ink-800 p-3 rounded-lg overflow-x-auto my-2;
+}
+.prose-chat a {
+  @apply text-blue-400 hover:underline;
+}
+.prose-chat ul {
+  @apply list-disc pl-5 my-2;
+}
+.prose-chat ol {
+  @apply list-decimal pl-5 my-2;
+}
+.prose-chat p {
+  @apply my-2;
+}

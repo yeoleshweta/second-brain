@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "filesystem-vault": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "${OBSIDIAN_VAULT_PATH}"
+      ]
+    },
+    "fetch": {
+      "command": "uvx",
+      "args": ["mcp-server-fetch"]
+    }
+  }
+}
