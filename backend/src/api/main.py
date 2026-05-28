@@ -12,9 +12,9 @@ Run:
 """
 from __future__ import annotations
 
-import asyncio
 import sys
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
@@ -24,8 +24,10 @@ from loguru import logger
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
+from src.agents.knowledge import build_daily_brief
 from src.config import get_settings
 from src.orchestrator import handle_message
+from src.scheduler import start_scheduler, stop_scheduler
 
 
 def _setup_logging() -> None:
@@ -39,7 +41,17 @@ def _setup_logging() -> None:
 _setup_logging()
 settings = get_settings()
 
-app = FastAPI(title="Second Brain API")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    start_scheduler()
+    try:
+        yield
+    finally:
+        stop_scheduler()
+
+
+app = FastAPI(title="Second Brain API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -149,6 +161,13 @@ async def plaid_link_token() -> dict:
 
 class PlaidExchangeRequest(BaseModel):
     public_token: str
+
+
+@app.post("/api/jobs/knowledge-brief", dependencies=[Depends(require_token)])
+async def run_knowledge_brief_job() -> dict:
+    """Manual trigger for the daily knowledge brief."""
+    path = await build_daily_brief()
+    return {"ok": True, "path": path}
 
 
 @app.post("/api/plaid/exchange", dependencies=[Depends(require_token)])
