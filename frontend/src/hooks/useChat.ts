@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { streamChat } from '@/lib/api'
-import type { Message, Attachment, Intent } from '@/types'
+import type { DigestItem, Message, Attachment, Intent } from '@/types'
 
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([])
@@ -35,6 +35,13 @@ export function useChat() {
                 return { ...m, content: m.content + evt.data, status: 'complete' }
               case 'intent':
                 return { ...m, intent: evt.data as Intent }
+              case 'digest_items':
+                try {
+                  const items = JSON.parse(evt.data) as DigestItem[]
+                  return { ...m, digestItems: items }
+                } catch {
+                  return m
+                }
               case 'obsidian':
                 return { ...m, obsidianPath: evt.data }
               case 'done':

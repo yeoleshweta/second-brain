@@ -37,7 +37,7 @@ from src.config import get_settings
 from src.orchestrator import handle_message
 from src.scheduler import start_scheduler, stop_scheduler
 from src.services import reading_list as rl
-from src.storage import get_session, init_db
+from src.storage import ReadingListItem, get_session, init_db
 from src.storage.models import ItemStatus
 
 
@@ -96,6 +96,15 @@ class ChatRequest(BaseModel):
     attachments: list[dict] = []
 
 
+class ReadingListAddRequest(BaseModel):
+    url: str | None = None
+    title: str
+    summary: str | None = None
+    source: str | None = None
+    kind: str = "url"
+    tags: str = ""
+
+
 class ReadingListPatch(BaseModel):
     status: str | None = None
     progress: int | None = None
@@ -116,6 +125,9 @@ async def chat(req: ChatRequest):
             yield {"event": "status", "data": "thinking"}
             result = await handle_message(req.message, req.attachments)
             yield {"event": "message", "data": result.get("reply", "")}
+            if result.get("digest_items"):
+                import json as _json
+                yield {"event": "digest_items", "data": _json.dumps(result["digest_items"])}
             if result.get("obsidian_path"):
                 yield {"event": "obsidian", "data": result["obsidian_path"]}
             yield {"event": "intent", "data": result.get("intent", "general")}
@@ -174,6 +186,50 @@ async def get_reading_list(
         "items": [_item_to_dict(i) for i in items],
         "stats": rl.stats(session),
     }
+
+
+@app.post("/api/reading-list", dependencies=[Depends(require_token)])
+async def add_reading_list_item(
+    body: ReadingListAddRequest,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict:
+    """Directly add an item (e.g., from the digest UI) without going through chat."""
+    from src.agents.knowledge import _write_mirror
+    from src.integrations import ObsidianClient
+
+    kind = ItemKind(body.kind) if body.kind in {k.value for k in ItemKind} else ItemKind.URL
+    item = rl.add(
+        session,
+        url=body.url or None,
+        title=body.title,
+        summary=body.summary,
+        source=body.source,
+        kind=kind,
+        tags=body.tags,
+    )
+    if item is None:
+        # Dedup — return existing item
+        from sqlmodel import select as _select
+        existing = session.exec(
+            _select(ReadingListItem).where(ReadingListItem.url == body.url)
+        ).first()
+        return {
+            "saved": False,
+            "duplicate": True,
+            "item": _item_to_dict(existing) if existing else None,
+        }
+
+    try:
+        async with ObsidianClient() as obs:
+            mirror_path = await _write_mirror(item, obs)
+        item.mirror_path = mirror_path
+        session.add(item)
+        session.commit()
+        session.refresh(item)
+    except Exception as e:
+        logger.warning("Digest save mirror write failed: {}", e)
+
+    return {"saved": True, "duplicate": False, "item": _item_to_dict(item)}
 
 
 @app.get("/api/reading-list/stats", dependencies=[Depends(require_token)])

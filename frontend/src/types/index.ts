@@ -1,5 +1,14 @@
 export type Intent = 'knowledge' | 'health' | 'finance' | 'calendar' | 'general'
 
+export interface DigestItem {
+  title: string
+  url: string
+  summary: string
+  source: string
+  date: string
+  kind: 'url' | 'paper' | 'note'
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -8,6 +17,7 @@ export interface Message {
   obsidianPath?: string
   attachments?: Attachment[]
   status?: 'thinking' | 'complete' | 'error'
+  digestItems?: DigestItem[]
 }
 
 export interface Attachment {
@@ -18,6 +28,6 @@ export interface Attachment {
 }
 
 export interface ChatStreamEvent {
-  event: 'status' | 'message' | 'intent' | 'obsidian' | 'done' | 'error'
+  event: 'status' | 'message' | 'intent' | 'obsidian' | 'done' | 'error' | 'digest_items'
   data: string
 }

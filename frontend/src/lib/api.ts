@@ -192,6 +192,23 @@ export async function deleteItem(id: number): Promise<void> {
   if (!resp.ok) throw new Error(`Delete item failed: ${resp.status}`)
 }
 
+export async function saveItemDirect(item: {
+  url?: string
+  title: string
+  summary?: string
+  source?: string
+  kind?: string
+  tags?: string
+}): Promise<{ saved: boolean; duplicate: boolean }> {
+  const resp = await fetch(`${API_BASE}/api/reading-list`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(item),
+  })
+  if (!resp.ok) throw new Error(`Save failed: ${resp.status}`)
+  return resp.json()
+}
+
 export async function getMorningBriefLatest(): Promise<{
   date: string
   path: string | null

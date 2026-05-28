@@ -41,7 +41,12 @@ class Settings(BaseSettings):
 
     # Knowledge
     tavily_api_key: str | None = None
-    knowledge_rss_feeds: str = ""  # comma-separated
+    knowledge_rss_feeds: str = ""  # comma-separated; leave blank to use built-in multi-genre defaults
+    knowledge_interests: str = "AI,engineering,science,business,design"  # comma-separated genres
+
+    # GitHub — used to personalize digest suggestions based on your projects
+    github_username: str | None = None
+    github_token: str | None = None  # optional; enables private repo access + higher rate limit
 
     # Finance — Plaid
     plaid_client_id: str | None = None
@@ -66,6 +71,10 @@ class Settings(BaseSettings):
     @property
     def rss_feed_list(self) -> list[str]:
         return [f.strip() for f in self.knowledge_rss_feeds.split(",") if f.strip()]
+
+    @property
+    def interest_list(self) -> list[str]:
+        return [i.strip().lower() for i in self.knowledge_interests.split(",") if i.strip()]
 
 
 @lru_cache
