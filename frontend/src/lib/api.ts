@@ -20,9 +20,29 @@ export async function* streamChat(
   message: string,
   attachments: Attachment[] = [],
 ): AsyncGenerator<ChatStreamEvent> {
+  const parseEventBlock = (block: string): ChatStreamEvent | null => {
+    const lines = block.split(/\r?\n/)
+    let eventName: ChatStreamEvent['event'] = 'message'
+    const dataLines: string[] = []
+
+    for (const line of lines) {
+      if (line.startsWith('event:')) {
+        eventName = line.slice(6).trim() as ChatStreamEvent['event']
+      } else if (line.startsWith('data:')) {
+        // Keep multiline data intact; only strip the single optional prefix space.
+        dataLines.push(line.slice(5).replace(/^\s/, ''))
+      }
+    }
+
+    const data = dataLines.join('\n')
+    if (!data && eventName !== 'done') return null
+    return { event: eventName, data }
+  }
+
   const resp = await fetch(`${API_BASE}/api/chat`, {
     method: 'POST',
     headers: {
+      Accept: 'text/event-stream',
       'Content-Type': 'application/json',
       ...authHeaders(),
     },
@@ -36,8 +56,14 @@ export async function* streamChat(
     }),
   })
 
-  if (!resp.ok || !resp.body) {
-    throw new Error(`Chat request failed: ${resp.status}`)
+  if (!resp.ok) {
+    const errorBody = (await resp.text().catch(() => '')).trim()
+    const extra = errorBody ? ` - ${errorBody}` : ''
+    throw new Error(`Chat request failed: ${resp.status}${extra}`)
+  }
+
+  if (!resp.body) {
+    throw new Error('Chat request failed: empty response body')
   }
 
   const reader = resp.body.getReader()
@@ -46,26 +72,27 @@ export async function* streamChat(
 
   while (true) {
     const { done, value } = await reader.read()
-    if (done) break
+    if (done) {
+      buffer += decoder.decode()
+      break
+    }
     buffer += decoder.decode(value, { stream: true })
 
-    // SSE events are separated by double newlines
-    const parts = buffer.split('\n\n')
+    // SSE events are separated by double newlines (LF or CRLF).
+    const parts = buffer.split(/\r?\n\r?\n/)
     buffer = parts.pop() || ''
 
     for (const part of parts) {
-      const lines = part.split('\n')
-      let eventName = 'message'
-      let data = ''
-      for (const line of lines) {
-        if (line.startsWith('event:')) eventName = line.slice(6).trim()
-        else if (line.startsWith('data:')) data += line.slice(5).trim()
-      }
-      if (data) {
-        yield { event: eventName as ChatStreamEvent['event'], data }
-        if (eventName === 'done' || eventName === 'error') return
-      }
+      const parsed = parseEventBlock(part)
+      if (!parsed) continue
+      yield parsed
+      if (parsed.event === 'done' || parsed.event === 'error') return
     }
+  }
+
+  if (buffer.trim()) {
+    const parsed = parseEventBlock(buffer)
+    if (parsed) yield parsed
   }
 }
 
