@@ -4,7 +4,7 @@ from __future__ import annotations
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
 
-from src.agents.knowledge import build_daily_brief
+from src.agents.knowledge import build_morning_brief
 
 _scheduler: AsyncIOScheduler | None = None
 
@@ -16,16 +16,16 @@ def start_scheduler() -> None:
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
-        build_daily_brief,
+        build_morning_brief,
         trigger="cron",
         hour=6,
         minute=0,
-        id="knowledge_daily_brief",
+        id="morning_brief",
         replace_existing=True,
     )
     scheduler.start()
     _scheduler = scheduler
-    logger.info("Scheduler started with job: knowledge_daily_brief @ 06:00")
+    logger.info("Scheduler started — morning_brief @ 06:00")
 
 
 def stop_scheduler() -> None:

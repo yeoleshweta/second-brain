@@ -1,4 +1,4 @@
-"""Knowledge sources: RSS feeds, arXiv search, optional Tavily web search."""
+"""Knowledge sources: RSS feeds, arXiv search, optional Tavily web search, OpenAI web search."""
 from __future__ import annotations
 
 import asyncio
@@ -9,6 +9,7 @@ import arxiv
 import feedparser
 import httpx
 from loguru import logger
+from openai import AsyncOpenAI
 
 from src.config import get_settings
 
@@ -87,8 +88,53 @@ async def search_arxiv(query: str, max_results: int = 10) -> list[KnowledgeItem]
     ]
 
 
+async def search_openai_web(query: str, max_results: int = 5) -> list[KnowledgeItem]:
+    """Web search via OpenAI's gpt-4o-mini-search-preview (no separate API key needed)."""
+    settings = get_settings()
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    try:
+        resp = await client.chat.completions.create(
+            model="gpt-4o-mini-search-preview",
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f"Find the {max_results} most recent and significant news stories or developments "
+                        f"about: {query}. For each, include a brief 1-2 sentence summary and its URL."
+                    ),
+                }
+            ],
+        )
+    except Exception as e:
+        logger.warning("OpenAI web search failed: {}", e)
+        return []
+
+    message = resp.choices[0].message
+    annotations = getattr(message, "annotations", None) or []
+
+    items: list[KnowledgeItem] = []
+    seen: set[str] = set()
+    for ann in annotations:
+        try:
+            uc = ann.url_citation  # type: ignore[attr-defined]
+            url: str = uc.url
+            title: str = uc.title or url
+        except AttributeError:
+            continue
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        items.append(
+            KnowledgeItem(title=title, url=url, summary="", source="Web", published=None)
+        )
+        if len(items) >= max_results:
+            break
+
+    return items
+
+
 async def search_tavily(query: str, max_results: int = 5) -> list[KnowledgeItem]:
-    """Optional: web search via Tavily for trending topics."""
+    """Optional: web search via Tavily (requires TAVILY_API_KEY)."""
     settings = get_settings()
     if not settings.tavily_api_key:
         return []

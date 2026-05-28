@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from src.orchestrator.graph import AgentState
 
 
-async def stub_run(state: "AgentState", agent_name: str) -> dict:
+async def stub_run(state: AgentState, agent_name: str) -> dict:
     async with ObsidianClient() as client:
         path = await client.append_to_inbox(
             f"[{agent_name}] {state['user_message']}",

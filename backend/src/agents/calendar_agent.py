@@ -20,5 +20,5 @@ schedule, surface follow-ups, and maintain their relationship notes in 04-People
 in Obsidian. You ALWAYS confirm before creating calendar events or sending invites."""
 
 
-async def run(state: "AgentState") -> dict:
+async def run(state: AgentState) -> dict:
     return await stub_run(state, "calendar")

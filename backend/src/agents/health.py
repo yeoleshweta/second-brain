@@ -20,6 +20,6 @@ vault and store structured logs in SQLite. You ask clarifying questions when ent
 are ambiguous (e.g. portion sizes)."""
 
 
-async def run(state: "AgentState") -> dict:
+async def run(state: AgentState) -> dict:
     # TODO: branch on attachments — if there's an image, treat as receipt
     return await stub_run(state, "health")

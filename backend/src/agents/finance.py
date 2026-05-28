@@ -23,5 +23,5 @@ questions about their finances. You NEVER initiate transactions or move money â€
 only read and analyze."""
 
 
-async def run(state: "AgentState") -> dict:
+async def run(state: AgentState) -> dict:
     return await stub_run(state, "finance")

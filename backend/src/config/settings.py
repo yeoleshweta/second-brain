@@ -21,7 +21,8 @@ class Settings(BaseSettings):
     openai_model_cheap: str = "gpt-4o-mini"
 
     # App
-    app_host: str = "127.0.0.1"
+    # 0.0.0.0 so Tailscale-routed traffic can reach the server. Token-gated.
+    app_host: str = "0.0.0.0"
     app_port: int = 8000
     frontend_origin: str = "http://localhost:5173"
     log_level: str = "INFO"

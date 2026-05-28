@@ -2,8 +2,38 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 
 from sqlmodel import Field, SQLModel
+
+
+class ItemStatus(StrEnum):
+    UNREAD = "unread"
+    IN_PROGRESS = "in_progress"
+    READ = "read"
+
+
+class ItemKind(StrEnum):
+    URL = "url"
+    PAPER = "paper"
+    NOTE = "note"
+
+
+class ReadingListItem(SQLModel, table=True):
+    __tablename__ = "reading_list_items"
+
+    id: int | None = Field(default=None, primary_key=True)
+    url: str | None = Field(default=None, index=True, unique=True)  # null for freeform notes
+    title: str
+    summary: str | None = None
+    source: str | None = None
+    kind: ItemKind = ItemKind.URL
+    tags: str = ""  # comma-separated
+    status: ItemStatus = ItemStatus.UNREAD
+    progress: int = 0  # 0-100
+    saved_at: datetime = Field(default_factory=datetime.now)
+    finished_at: datetime | None = None
+    mirror_path: str | None = None  # path relative to vault root
 
 
 class AuditLog(SQLModel, table=True):

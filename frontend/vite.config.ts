@@ -13,6 +13,7 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0',  // listen on all interfaces so Tailscale traffic reaches Vite
     port: 5173,
     proxy: {
       '/api': {

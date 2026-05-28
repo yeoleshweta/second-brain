@@ -1,11 +1,13 @@
 import type { Attachment, ChatStreamEvent } from '@/types'
 
-// In production you'd load this from a setting. For local dev the proxy handles it.
 const API_TOKEN = import.meta.env.VITE_API_TOKEN || 'change-me-to-a-long-random-string'
 
-// If VITE_API_URL is set, hit the backend directly (bypasses Vite's proxy, which
-// doesn't reliably stream SSE responses). Empty/unset = relative URLs via proxy.
-const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+// Dynamic API base: when accessed from a phone over Tailscale, window.location.hostname
+// is the Mac's MagicDNS name, so this automatically points to the right backend.
+const API_BASE = (
+  import.meta.env.VITE_API_URL ||
+  `${window.location.protocol}//${window.location.hostname}:8000`
+).replace(/\/$/, '')
 
 function authHeaders(): HeadersInit {
   return {
@@ -131,4 +133,73 @@ export async function plaidExchange(publicToken: string): Promise<void> {
     body: JSON.stringify({ public_token: publicToken }),
   })
   if (!resp.ok) throw new Error(`Plaid exchange failed: ${resp.status}`)
+}
+
+// ── Reading list ───────────────────────────────────────────────────────────────
+
+export interface ReadingItem {
+  id: number
+  url: string | null
+  title: string
+  summary: string | null
+  source: string | null
+  kind: 'url' | 'paper' | 'note'
+  tags: string
+  status: 'unread' | 'in_progress' | 'read'
+  progress: number
+  saved_at: string
+  finished_at: string | null
+  mirror_path: string | null
+}
+
+export interface ReadingStats {
+  total: number
+  read: number
+  in_progress: number
+  unread: number
+  percent_done: number
+}
+
+export async function getReadingList(
+  status = 'unread,in_progress',
+): Promise<{ items: ReadingItem[]; stats: ReadingStats }> {
+  const resp = await fetch(
+    `${API_BASE}/api/reading-list?status=${encodeURIComponent(status)}`,
+    { headers: authHeaders() },
+  )
+  if (!resp.ok) throw new Error(`Reading list failed: ${resp.status}`)
+  return resp.json()
+}
+
+export async function updateItem(
+  id: number,
+  patch: { status?: string; progress?: number },
+): Promise<ReadingItem> {
+  const resp = await fetch(`${API_BASE}/api/reading-list/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(patch),
+  })
+  if (!resp.ok) throw new Error(`Update item failed: ${resp.status}`)
+  return resp.json()
+}
+
+export async function deleteItem(id: number): Promise<void> {
+  const resp = await fetch(`${API_BASE}/api/reading-list/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  if (!resp.ok) throw new Error(`Delete item failed: ${resp.status}`)
+}
+
+export async function getMorningBriefLatest(): Promise<{
+  date: string
+  path: string | null
+  content: string | null
+}> {
+  const resp = await fetch(`${API_BASE}/api/morning-brief/latest`, {
+    headers: authHeaders(),
+  })
+  if (!resp.ok) return { date: '', path: null, content: null }
+  return resp.json()
 }

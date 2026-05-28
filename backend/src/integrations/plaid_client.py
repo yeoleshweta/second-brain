@@ -16,8 +16,8 @@ import asyncio
 
 from loguru import logger
 from plaid.api import plaid_api
-from plaid.configuration import Configuration
 from plaid.api_client import ApiClient
+from plaid.configuration import Configuration
 from plaid.model.country_code import CountryCode
 from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
 from plaid.model.link_token_create_request import LinkTokenCreateRequest
