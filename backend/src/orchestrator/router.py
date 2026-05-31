@@ -13,7 +13,7 @@ Intent = Literal["knowledge", "health", "finance", "calendar", "general"]
 _SYSTEM = """You are an intent classifier for a personal AI assistant.
 
 Classify the user's message into ONE of:
-- knowledge: AI news, papers, articles, tools, learning, "save this"
+- knowledge: AI news, papers, articles, tools, learning; saving/bookmarking URLs or notes; reading list management (show list, mark as read, delete from list, progress update, remove from list, bookmark, "save in notes", "save this"); on-demand digests; summarizing articles
 - health: food, eating, workouts, weight, sleep, body metrics, groceries, recipes
 - finance: spending, budgets, transactions, subscriptions, savings, banking
 - calendar: meetings, scheduling, reminders, follow-ups, people, networking
