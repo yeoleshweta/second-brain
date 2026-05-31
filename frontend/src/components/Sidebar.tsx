@@ -105,8 +105,8 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
               <span className="text-xs text-ink-500">stub</span>
             </li>
             <li className="flex items-center justify-between px-3 py-1.5">
-              <span>📅 Calendar</span>
-              <span className="text-xs text-ink-500">stub</span>
+              <span>📅 Chandler</span>
+              <span className="text-xs text-emerald-500">active</span>
             </li>
           </ul>
         </div>

@@ -39,6 +39,7 @@ from src.scheduler import start_scheduler, stop_scheduler
 from src.services import reading_list as rl
 from src.storage import ReadingListItem, get_session, init_db
 from src.storage.models import ItemStatus
+from src.integrations.google_calendar import google_calendar_status
 
 
 def _setup_logging() -> None:
@@ -304,7 +305,7 @@ async def delete_reading_list_item(
 
 @app.post("/api/jobs/morning-brief", dependencies=[Depends(require_token)])
 async def run_morning_brief_job() -> dict:
-    """Manual trigger for the daily morning brief."""
+    """Manual trigger for a Ross-only morning brief (backward compat)."""
     path = await build_morning_brief()
     return {"ok": True, "path": path}
 
@@ -316,19 +317,65 @@ async def run_knowledge_brief_job() -> dict:
     return {"ok": True, "path": path}
 
 
+@app.post("/api/jobs/combined-brief", dependencies=[Depends(require_token)])
+async def run_combined_brief_job() -> dict:
+    """Manual trigger for the unified Chandler + Ross morning brief."""
+    from src.jobs.combined_brief import build_combined_brief
+    path = await build_combined_brief()
+    return {"ok": True, "path": path}
+
+
+@app.post("/api/jobs/reachout", dependencies=[Depends(require_token)])
+async def run_reachout_job() -> dict:
+    """Manual trigger for Sunday reach-out section."""
+    from src.jobs.reachout import append_reachout_to_brief
+    await append_reachout_to_brief()
+    return {"ok": True}
+
+
 @app.get("/api/morning-brief/latest", dependencies=[Depends(require_token)])
 async def get_latest_morning_brief() -> dict:
-    """Return today's morning brief markdown + date (for the frontend banner)."""
+    """Return today's morning brief markdown + date (for the frontend banner).
+
+    Prefers the combined brief (YYYY-MM-DD-Brief.md); falls back to Ross-only.
+    """
     from src.integrations import ObsidianClient
 
     today = __import__("datetime").date.today().isoformat()
-    path = f"00-Inbox/Daily/{today}-Ross.md"
-    try:
-        async with ObsidianClient() as obs:
-            content = await obs.get_note(path)
-        return {"date": today, "path": path, "content": content}
-    except Exception:
-        return {"date": today, "path": None, "content": None}
+    for suffix in ("-Brief.md", "-Ross.md"):
+        path = f"00-Inbox/Daily/{today}{suffix}"
+        try:
+            async with ObsidianClient() as obs:
+                content = await obs.get_note(path)
+            return {"date": today, "path": path, "content": content}
+        except Exception:
+            continue
+    return {"date": today, "path": None, "content": None}
+
+
+@app.get("/api/integrations/google/health", dependencies=[Depends(require_token)])
+async def google_calendar_health() -> dict:
+    """Check Google Calendar connectivity."""
+    return google_calendar_status()
+
+
+@app.get("/api/chandler/agenda", dependencies=[Depends(require_token)])
+async def get_chandler_agenda() -> dict:
+    """Return today's agenda as structured JSON for the frontend Agenda view."""
+    from src.agents.calendar_agent import handle_agenda
+    result = await handle_agenda("what's on today?")
+    return {"reply": result.get("reply", "")}
+
+
+@app.get("/api/people", dependencies=[Depends(require_token)])
+async def list_people() -> dict:
+    """List all person notes (frontmatter only)."""
+    from src.services import people
+    all_p = people.list_all()
+    return {"people": [
+        {"filename": p["filename"], "frontmatter": p["frontmatter"], "body_preview": p["body_preview"]}
+        for p in all_p
+    ]}
 
 
 # ── Plaid endpoints ────────────────────────────────────────────────────────────

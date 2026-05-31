@@ -610,11 +610,14 @@ def _sort_recent(items: list[KnowledgeItem]) -> list[KnowledgeItem]:
 # ── Morning Brief ──────────────────────────────────────────────────────────────
 
 
-async def build_morning_brief() -> str:
-    """Curate a 3-item morning brief and write it to Obsidian. Returns the vault path."""
+async def morning_section() -> str:
+    """Curate a 3-item brief and return rendered Markdown (no file write).
+
+    Exposed for the unified combined-brief job. Returns the `## 🪄 Ross's Picks`
+    section as a string.
+    """
     settings = get_settings()
 
-    # Resolve sources
     feed_urls = settings.rss_feed_list or get_feeds_for_interests(settings.interest_list)
     profile, rss_items, arxiv_items = await asyncio.gather(
         _get_github_profile(),
@@ -631,9 +634,8 @@ async def build_morning_brief() -> str:
     candidates = _dedupe([*rss_items, *arxiv_items, *web_items])
     if not candidates:
         logger.warning("Morning brief: no candidates found")
-        return ""
+        return "## 🪄 Ross's Picks\n\n_No items found today._\n"
 
-    # Build numbered candidate list for LLM
     cand_lines = []
     for i, c in enumerate(candidates[:30], 1):
         cand_lines.append(
@@ -642,7 +644,6 @@ async def build_morning_brief() -> str:
         )
     cand_text = "\n".join(cand_lines)
 
-    # Build interest/GitHub context hint for the LLM
     context_hint = ""
     if profile:
         context_hint = (
@@ -679,10 +680,9 @@ async def build_morning_brief() -> str:
         picks = json.loads(raw)
     except Exception as e:
         logger.error("Morning brief LLM failed: {}", e)
-        return ""
+        return "## 🪄 Ross's Picks\n\n_LLM error — try again later._\n"
 
     now = datetime.now()
-    day = now.strftime("%Y-%m-%d")
 
     def _section(emoji: str, heading: str, key: str) -> str:
         item = picks.get(key, {})
@@ -701,12 +701,29 @@ async def build_morning_brief() -> str:
             f"{blurb}\n"
         )
 
+    return (
+        f"## 🪄 Ross's Picks\n\n"
+        f"*Curated by Ross at {now.strftime('%H:%M')}.*\n\n"
+        + _section("🔥", "Trending", "trending") + "\n"
+        + _section("🧠", "Interesting", "interesting") + "\n"
+        + _section("🛠️", "New tool / tech", "tool") + "\n"
+    )
+
+
+async def build_morning_brief() -> str:
+    """Write a Ross-only brief to Obsidian. Returns the vault path.
+
+    Kept for backward compat with POST /api/jobs/morning-brief.
+    For the unified daily brief, use combined_brief.build_combined_brief().
+    """
+    content_section = await morning_section()
+    now = datetime.now()
+    day = now.strftime("%Y-%m-%d")
+
     content = (
         f"# Ross's Morning Brief — {day}\n\n"
-        f"*Curated by Ross at {now.strftime('%H:%M')}.*\n\n"
-        + _section("🔥", "Trending in AI", "trending") + "\n"
-        + _section("🧠", "Interesting fact / research", "interesting") + "\n"
-        + _section("🛠️", "New tool / tech", "tool") + "\n"
+        f"*Generated at {now.strftime('%H:%M')}.*\n\n"
+        + content_section
     )
 
     brief_path = f"00-Inbox/Daily/{day}-Ross.md"
@@ -721,7 +738,7 @@ async def build_morning_brief() -> str:
     return brief_path
 
 
-# Backwards-compat alias used by old /api/jobs/knowledge-brief endpoint
+# Backwards-compat alias
 async def build_daily_brief() -> str:
     return await build_morning_brief()
 

@@ -15,6 +15,8 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',  // listen on all interfaces so Tailscale traffic reaches Vite
     port: 5173,
+    // Allow any hostname (Tailscale MagicDNS, localhost, etc.) — single-user local app
+    allowedHosts: true,
     proxy: {
       '/api': {
         target: 'http://localhost:8000',

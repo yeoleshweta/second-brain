@@ -23,6 +23,10 @@ dependencies = [
     "feedparser>=6.0.0",
     "arxiv>=2.1.0",
 
+    # Calendar / people agent
+    "python-frontmatter>=1.1.0",
+    "dateparser>=1.2.0",
+
     # Calendar agent — Google
     "google-api-python-client>=2.150.0",
     "google-auth>=2.35.0",
