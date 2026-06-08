@@ -32,6 +32,7 @@ from src.integrations.gutenberg import (
     get_gutenberg_book,
     search_gutenberg_broad,
 )
+from src.integrations.image_caption import describe_image
 from src.integrations.knowledge_sources import (
     GitHubProfile,
     KnowledgeItem,
@@ -48,12 +49,10 @@ from src.integrations.knowledge_sources import (
 from src.integrations.librivox import search_librivox
 from src.integrations.oceanofpdf import OceanOfPdfMatch, oceanofpdf_search_match, resolve_oceanofpdf
 from src.integrations.open_library import search_open_library
-from src.integrations.apple_books import handle_apple_books_request as handle_apple_books
-from src.integrations.image_caption import describe_image
-from src.services import vault_files as vf
 from src.services import pending_actions, practice, usage, user_config
 from src.services import reading_content as rc
 from src.services import reading_list as rl
+from src.services import vault_files as vf
 from src.services import vocabulary as vocab_service
 from src.storage import ReadingListItem, get_session, init_db
 from src.storage.models import ItemKind, ItemStatus
@@ -2843,6 +2842,86 @@ async def handle_list_vocab(msg: str, session: Session) -> dict:
     return {"reply": "\n".join(lines)}
 
 
+async def handle_apple_books_from_db(msg: str, session: Session) -> dict:
+    """Answer Apple Books reading questions using synced DB data (works on cloud)."""
+    from sqlmodel import select
+
+    from src.storage.models import ItemStatus
+
+    books = session.exec(
+        select(ReadingListItem).where(ReadingListItem.tags.contains("apple-books"))  # type: ignore[arg-type]
+    ).all()
+
+    if not books:
+        return {
+            "output": (
+                "No Apple Books data synced yet. Run the Mac sync script to pull your library:\n\n"
+                "```bash\nexport SECOND_BRAIN_API_URL=https://your-app.onrender.com\n"
+                "export SECOND_BRAIN_API_TOKEN=your-token\n"
+                "python3 scripts/sync_apple_books.py\n```"
+            )
+        }
+
+    currently_reading = [b for b in books if b.status == ItemStatus.IN_PROGRESS]
+    finished          = [b for b in books if b.status == ItemStatus.DONE]
+    unread            = [b for b in books if b.status == ItemStatus.UNREAD]
+
+    genres: dict[str, int] = {}
+    for book in books:
+        for tag in (book.tags or "").split(","):
+            tag = tag.strip()
+            if tag and tag != "apple-books":
+                genres[tag] = genres.get(tag, 0) + 1
+    top_genres = sorted(genres.items(), key=lambda x: x[1], reverse=True)[:5]
+
+    lowered = msg.lower()
+
+    # Currently reading
+    _reading_now_kws = ["currently reading", "reading now", "in progress", "what am i reading"]
+    if any(w in lowered for w in _reading_now_kws):
+        if not currently_reading:
+            return {"output": "No books currently in progress in your Apple Books library."}
+        lines = ["**Currently reading:**\n"]
+        for b in currently_reading:
+            lines.append(f"- **{b.title}** by {b.source or 'Unknown'} — {b.progress}% complete")
+        return {"output": "\n".join(lines)}
+
+    # Finished books
+    if any(w in lowered for w in ["finished", "completed", "read books", "have i read"]):
+        recently = sorted(finished, key=lambda x: x.finished_at or datetime.min, reverse=True)[:10]
+        lines = [f"**Finished books ({len(finished)} total):**\n"]
+        for b in recently:
+            date_str = f" — finished {b.finished_at.strftime('%b %Y')}" if b.finished_at else ""
+            lines.append(f"- **{b.title}** by {b.source or 'Unknown'}{date_str}")
+        return {"output": "\n".join(lines)}
+
+    # Reading stats / habits
+    lines = [
+        "**Your Apple Books reading habits:**\n",
+        f"- **Total books:** {len(books)}",
+        f"- **Currently reading:** {len(currently_reading)}",
+        f"- **Finished:** {len(finished)}",
+        f"- **Want to read:** {len(unread)}",
+    ]
+    if currently_reading:
+        lines.append("\n**In progress:**")
+        for b in currently_reading[:5]:
+            lines.append(f"  - {b.title} ({b.progress}%)")
+    if top_genres:
+        lines.append("\n**Top genres:**")
+        for genre, count in top_genres:
+            lines.append(f"  - {genre}: {count} books")
+    if finished:
+        recent_done = sorted(
+            finished, key=lambda x: x.finished_at or datetime.min, reverse=True
+        )[:3]
+        lines.append("\n**Recently finished:**")
+        for b in recent_done:
+            lines.append(f"  - {b.title} by {b.source or 'Unknown'}")
+
+    return {"output": "\n".join(lines)}
+
+
 async def handle_knowledge_stats(session: Session) -> dict:
     vstats = vocab_service.stats(session)
     rstats = rl.stats(session)
@@ -3248,7 +3327,7 @@ async def run(state: AgentState) -> dict:
         if sub_intent == "knowledge_stats":
             return await handle_knowledge_stats(session)
         if sub_intent == "apple_books":
-            return await handle_apple_books(msg)
+            return await handle_apple_books_from_db(msg, session)
         if sub_intent in {
             "set_reading_goal",
             "pause_nudges",

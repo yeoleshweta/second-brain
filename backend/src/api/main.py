@@ -859,6 +859,122 @@ async def plaid_unlink_item(
     return {"ok": True}
 
 
+# ── Apple Books sync endpoint ────────────────────────────────────────────────
+
+
+class AppleBookPayload(BaseModel):
+    apple_books_id: str
+    title: str
+    author: str
+    genre: str | None = None
+    progress: int = 0          # 0-100
+    status: str = "unread"     # unread | reading | finished
+    page_count: int | None = None
+    rating: int | None = None
+    last_opened_at: str | None = None
+    finished_at: str | None = None
+    purchased_at: str | None = None
+
+
+class AppleBooksSyncRequest(BaseModel):
+    books: list[AppleBookPayload]
+
+
+@app.post("/api/reading/apple-books/sync", dependencies=[Depends(require_token)])
+async def sync_apple_books(
+    payload: AppleBooksSyncRequest,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict:
+    """Upsert Apple Books library data sent from the Mac sync script."""
+    from datetime import datetime
+
+    from sqlmodel import select
+
+    from src.storage.models import ItemKind, ItemStatus
+
+    _status_map = {
+        "reading":  ItemStatus.IN_PROGRESS,
+        "finished": ItemStatus.DONE,
+        "unread":   ItemStatus.UNREAD,
+    }
+
+    added = updated = 0
+    for book in payload.books:
+        url = f"apple-books://{book.apple_books_id}"
+        existing = session.exec(
+            select(ReadingListItem).where(ReadingListItem.url == url)
+        ).first()
+
+        finished_dt: datetime | None = None
+        if book.finished_at:
+            try:
+                finished_dt = datetime.fromisoformat(book.finished_at)
+            except ValueError:
+                pass
+
+        tags = ",".join(filter(None, [book.genre, "apple-books"]))
+        item_status = _status_map.get(book.status, ItemStatus.UNREAD)
+
+        if existing:
+            existing.title       = book.title
+            existing.source      = book.author
+            existing.progress    = book.progress
+            existing.status      = item_status
+            existing.tags        = tags
+            existing.finished_at = finished_dt
+            session.add(existing)
+            updated += 1
+        else:
+            new_item = ReadingListItem(
+                url         = url,
+                title       = book.title,
+                source      = book.author,
+                kind        = ItemKind.BOOK,
+                status      = item_status,
+                progress    = book.progress,
+                tags        = tags,
+                finished_at = finished_dt,
+            )
+            session.add(new_item)
+            added += 1
+
+    session.commit()
+    logger.info("Apple Books sync: {} added, {} updated", added, updated)
+    return {"ok": True, "added": added, "updated": updated, "total": len(payload.books)}
+
+
+@app.get("/api/reading/stats", dependencies=[Depends(require_token)])
+async def reading_stats(session: Annotated[Session, Depends(get_session)]) -> dict:
+    """Reading habit summary from synced Apple Books data."""
+    from sqlmodel import select
+
+    from src.storage.models import ItemStatus
+
+    all_books = session.exec(
+        select(ReadingListItem).where(ReadingListItem.tags.contains("apple-books"))  # type: ignore[arg-type]
+    ).all()
+
+    currently_reading = [b for b in all_books if b.status == ItemStatus.IN_PROGRESS]
+    finished          = [b for b in all_books if b.status == ItemStatus.DONE]
+    unread            = [b for b in all_books if b.status == ItemStatus.UNREAD]
+
+    genres: dict[str, int] = {}
+    for book in all_books:
+        for tag in (book.tags or "").split(","):
+            tag = tag.strip()
+            if tag and tag != "apple-books":
+                genres[tag] = genres.get(tag, 0) + 1
+
+    return {
+        "total":             len(all_books),
+        "currently_reading": [{"title": b.title, "author": b.source, "progress": b.progress} for b in currently_reading],
+        "finished_count":    len(finished),
+        "unread_count":      len(unread),
+        "top_genres":        sorted(genres.items(), key=lambda x: x[1], reverse=True)[:5],
+        "recently_finished": [{"title": b.title, "author": b.source, "finished_at": b.finished_at.isoformat() if b.finished_at else None} for b in sorted(finished, key=lambda x: x.finished_at or datetime.min, reverse=True)[:5]],
+    }
+
+
 # ── Finance endpoints ───────────────────────────────────────────────────────────
 
 

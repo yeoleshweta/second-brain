@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.secondbrain.booksync</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/Users/shwetasharma/Documents/Projects/second-brain/scripts/sync_apple_books.py</string>
+    </array>
+
+    <!-- Run every 2 hours -->
+    <key>StartInterval</key>
+    <integer>7200</integer>
+
+    <!-- Also run once on load -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>SECOND_BRAIN_API_URL</key>
+        <string>https://second-brain-xxxx.onrender.com</string>
+        <key>SECOND_BRAIN_API_TOKEN</key>
+        <string>vgDWkmSJ5e0BdF31HFZArHk2mJb1-BrgnuCqbVg5IDQ</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/secondbrain-booksync.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/secondbrain-booksync-error.log</string>
+</dict>
+</plist>
