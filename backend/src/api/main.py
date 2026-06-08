@@ -890,8 +890,6 @@ async def sync_apple_books(
 
     from sqlmodel import select
 
-    from src.storage.models import ItemKind, ItemStatus
-
     _status_map = {
         "reading":  ItemStatus.IN_PROGRESS,
         "finished": ItemStatus.DONE,
@@ -907,10 +905,9 @@ async def sync_apple_books(
 
         finished_dt: datetime | None = None
         if book.finished_at:
-            try:
+            import contextlib
+            with contextlib.suppress(ValueError):
                 finished_dt = datetime.fromisoformat(book.finished_at)
-            except ValueError:
-                pass
 
         tags = ",".join(filter(None, [book.genre, "apple-books"]))
         item_status = _status_map.get(book.status, ItemStatus.UNREAD)
@@ -929,7 +926,7 @@ async def sync_apple_books(
                 url         = url,
                 title       = book.title,
                 source      = book.author,
-                kind        = ItemKind.BOOK,
+                kind        = ItemKind.EBOOK,
                 status      = item_status,
                 progress    = book.progress,
                 tags        = tags,
@@ -965,13 +962,25 @@ async def reading_stats(session: Annotated[Session, Depends(get_session)]) -> di
             if tag and tag != "apple-books":
                 genres[tag] = genres.get(tag, 0) + 1
 
+    from datetime import datetime as _dt
+
     return {
-        "total":             len(all_books),
-        "currently_reading": [{"title": b.title, "author": b.source, "progress": b.progress} for b in currently_reading],
-        "finished_count":    len(finished),
-        "unread_count":      len(unread),
-        "top_genres":        sorted(genres.items(), key=lambda x: x[1], reverse=True)[:5],
-        "recently_finished": [{"title": b.title, "author": b.source, "finished_at": b.finished_at.isoformat() if b.finished_at else None} for b in sorted(finished, key=lambda x: x.finished_at or datetime.min, reverse=True)[:5]],
+        "total": len(all_books),
+        "currently_reading": [
+            {"title": b.title, "author": b.source, "progress": b.progress}
+            for b in currently_reading
+        ],
+        "finished_count": len(finished),
+        "unread_count":   len(unread),
+        "top_genres": sorted(genres.items(), key=lambda x: x[1], reverse=True)[:5],
+        "recently_finished": [
+            {
+                "title":       b.title,
+                "author":      b.source,
+                "finished_at": b.finished_at.isoformat() if b.finished_at else None,
+            }
+            for b in sorted(finished, key=lambda x: x.finished_at or _dt.min, reverse=True)[:5]
+        ],
     }
 
 
