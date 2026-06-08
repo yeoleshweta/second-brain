@@ -4,84 +4,192 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import lru_cache
+from pathlib import Path
 
 import arxiv
 import feedparser
 import httpx
+import yaml
 from loguru import logger
 from openai import AsyncOpenAI
 
 from src.config import get_settings
 
-# ── Multi-genre default RSS feeds ─────────────────────────────────────────────
-# Organised by genre tag so we can filter by user interests.
+# ── Feed configuration ────────────────────────────────────────────────────────
 
+
+@dataclass
+class FeedSource:
+    url: str
+    name: str = ""
+    tags: list[str] = field(default_factory=list)
+
+    @property
+    def primary_tag(self) -> str:
+        return self.tags[0] if self.tags else "general"
+
+
+# Legacy inline defaults — used only when feeds.yaml is missing.
 DEFAULT_FEEDS: dict[str, list[str]] = {
     "ai": [
         "https://openai.com/blog/rss.xml",
         "https://www.anthropic.com/news/rss.xml",
-        "https://bair.berkeley.edu/blog/feed.xml",
         "https://huggingface.co/blog/feed.xml",
     ],
     "engineering": [
-        "https://engineering.atspotify.com/feed/",
-        "https://netflixtechblog.com/feed",
         "https://martinfowler.com/feed.atom",
-        "https://feeds.feedburner.com/TheDailyWtf",
+        "https://hnrss.org/frontpage",
     ],
     "science": [
-        "https://www.nature.com/news.rss",
-        "https://www.sciencedaily.com/rss/top.xml",
-        "https://www.newscientist.com/feed/home/",
+        "https://www.quantamagazine.org/feed/",
         "https://phys.org/rss-feed/",
     ],
     "business": [
-        "https://hbr.org/jobs/rss",
-        "https://feeds.feedburner.com/fastcompany/headlines",
-        "https://www.inc.com/rss",
+        "https://stratechery.com/feed/",
         "https://a16z.com/feed/",
     ],
     "design": [
         "https://www.smashingmagazine.com/feed/",
-        "https://uxdesign.cc/feed",
-        "https://feeds.feedburner.com/awwwards-website-awards",
-        "https://medium.com/feed/microsoft-design",
+        "https://www.nngroup.com/feed/rss/",
     ],
     "psychology": [
-        "https://fs.blog/feed/",         # Farnam Street — mental models
-        "https://www.psychologytoday.com/us/front/feed",
-        "https://behavioralscientist.org/feed/",
-    ],
-    "culture": [
+        "https://www.astralcodexten.com/feed",
         "https://aeon.co/feed.rss",
-        "https://nautil.us/feed/",
-        "https://www.theatlantic.com/feed/all/",
-    ],
-    "health": [
-        "https://well.blogs.nytimes.com/feed/",
-        "https://www.health.harvard.edu/blog/feed",
-    ],
-    "finance": [
-        "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
-        "https://www.bloomberg.com/feeds/sitemap_news.xml",
     ],
 }
 
+# Map digest phrasing → feed tags for topic-filtered pulls.
+TOPIC_TAG_ALIASES: dict[str, tuple[str, ...]] = {
+    "ai": ("ai", "llm", "machine learning", "artificial intelligence", "agents"),
+    "engineering": ("engineering", "software", "developer", "tech", "programming"),
+    "science": ("science", "research", "physics", "biology", "neuroscience"),
+    "business": ("business", "startup", "strategy", "economics", "market"),
+    "design": ("design", "ux", "ui", "product design"),
+    "psychology": ("psychology", "mental", "cognitive", "behavior"),
+    "culture": ("culture", "ideas", "philosophy"),
+    "health": ("health", "medicine", "fitness"),
+    "finance": ("finance", "investing", "fintech"),
+}
 
-def get_feeds_for_interests(interests: list[str]) -> list[str]:
-    """Return RSS URLs matching the user's interest list, deduplicated."""
+
+def _normalize_tag(tag: str) -> str:
+    return tag.strip().lower()
+
+
+def _feeds_config_path() -> Path:
+    settings = get_settings()
+    path = settings.knowledge_feeds_config
+    if path.is_absolute():
+        return path
+    # Resolve relative to backend package root (parent of src/).
+    backend_root = Path(__file__).resolve().parents[2]
+    return backend_root / path
+
+
+@lru_cache(maxsize=1)
+def load_feed_sources() -> list[FeedSource]:
+    """Load tagged feeds from YAML. Returns empty list if file missing."""
+    path = _feeds_config_path()
+    if not path.exists():
+        logger.debug("Feeds config not found at {}", path)
+        return []
+
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception as exc:
+        logger.warning("Failed to parse feeds config {}: {}", path, exc)
+        return []
+
+    out: list[FeedSource] = []
+    for entry in raw.get("feeds", []):
+        if not isinstance(entry, dict):
+            continue
+        url = str(entry.get("url", "")).strip()
+        if not url:
+            continue
+        tags = [_normalize_tag(t) for t in entry.get("tags", []) if str(t).strip()]
+        out.append(
+            FeedSource(
+                url=url,
+                name=str(entry.get("name", "")).strip(),
+                tags=tags or ["general"],
+            )
+        )
+    logger.info("Loaded {} tagged feeds from {}", len(out), path)
+    return out
+
+
+def _legacy_feed_sources(interests: list[str]) -> list[FeedSource]:
+    urls = get_feeds_for_interests_legacy(interests)
+    return [FeedSource(url=u, name=u, tags=["general"]) for u in urls]
+
+
+def get_feeds_for_interests_legacy(interests: list[str]) -> list[str]:
+    """Return RSS URLs from inline DEFAULT_FEEDS dict (legacy fallback)."""
     urls: list[str] = []
     seen: set[str] = set()
     for genre in interests:
-        for url in DEFAULT_FEEDS.get(genre.lower(), []):
+        for url in DEFAULT_FEEDS.get(_normalize_tag(genre), []):
             if url not in seen:
                 seen.add(url)
                 urls.append(url)
-    # Fallback: if no interests match, return all AI feeds
     if not urls:
         for url in DEFAULT_FEEDS["ai"]:
             urls.append(url)
     return urls
+
+
+def resolve_feed_sources(
+    interests: list[str],
+    *,
+    topic_tags: list[str] | None = None,
+) -> list[FeedSource]:
+    """Resolve feed list: env override > YAML > legacy defaults.
+
+    When ``topic_tags`` is set, only feeds whose tags overlap are returned.
+    """
+    settings = get_settings()
+
+    if settings.rss_feed_list:
+        sources = [
+            FeedSource(url=u, name=u, tags=["custom"])
+            for u in settings.rss_feed_list
+        ]
+    else:
+        sources = load_feed_sources()
+        if not sources:
+            sources = _legacy_feed_sources(interests)
+
+    if not topic_tags:
+        # Match user's declared interests.
+        wanted = {_normalize_tag(i) for i in interests}
+        if wanted:
+            filtered = [
+                s for s in sources if wanted.intersection(set(s.tags))
+            ]
+            if filtered:
+                sources = filtered
+        return sources
+
+    wanted_topics = {_normalize_tag(t) for t in topic_tags}
+    filtered = [s for s in sources if wanted_topics.intersection(set(s.tags))]
+    return filtered or sources
+
+
+def extract_topic_tags_from_message(message: str) -> list[str] | None:
+    """If the user asked about a specific topic, return matching feed tags."""
+    lowered = message.lower()
+    matched: list[str] = []
+    for tag, aliases in TOPIC_TAG_ALIASES.items():
+        if any(alias in lowered for alias in aliases):
+            matched.append(tag)
+    return matched or None
+
+
+def get_feeds_for_interests(interests: list[str]) -> list[str]:
+    """Backward-compatible URL list for callers that only need URLs."""
+    return [s.url for s in resolve_feed_sources(interests)]
 
 
 # ── KnowledgeItem ─────────────────────────────────────────────────────────────
@@ -193,11 +301,24 @@ async def fetch_github_profile(username: str, token: str | None = None) -> GitHu
 
 
 async def fetch_rss(feed_urls: list[str], max_per_feed: int = 5) -> list[KnowledgeItem]:
-    """Fetch and parse a list of RSS/Atom feeds in parallel."""
-    async def _one(url: str) -> list[KnowledgeItem]:
+    """Fetch RSS by URL list (legacy API)."""
+    sources = [FeedSource(url=u, name=u) for u in feed_urls]
+    return await fetch_rss_sources(sources, max_per_feed=max_per_feed)
+
+
+async def fetch_rss_sources(
+    sources: list[FeedSource],
+    max_per_feed: int = 5,
+) -> list[KnowledgeItem]:
+    """Fetch and parse tagged RSS/Atom feeds in parallel."""
+    async def _one(source: FeedSource) -> list[KnowledgeItem]:
         try:
-            feed = await asyncio.to_thread(feedparser.parse, url)
+            feed = await asyncio.wait_for(
+                asyncio.to_thread(feedparser.parse, source.url),
+                timeout=8.0,
+            )
             items = []
+            display_source = source.name or feed.feed.get("title", source.url)
             for entry in feed.entries[:max_per_feed]:
                 pub = None
                 if hasattr(entry, "published_parsed") and entry.published_parsed:
@@ -207,17 +328,62 @@ async def fetch_rss(feed_urls: list[str], max_per_feed: int = 5) -> list[Knowled
                         title=entry.get("title", "(untitled)"),
                         url=entry.get("link", ""),
                         summary=entry.get("summary", "")[:500],
-                        source=feed.feed.get("title", url),
+                        source=display_source,
                         published=pub,
+                        genre=source.primary_tag,
                     )
                 )
             return items
+        except TimeoutError:
+            logger.warning("RSS fetch timed out for {}", source.url)
+            return []
         except Exception as e:
-            logger.warning("RSS fetch failed for {}: {}", url, e)
+            logger.warning("RSS fetch failed for {}: {}", source.url, e)
             return []
 
-    results = await asyncio.gather(*[_one(u) for u in feed_urls])
+    if not sources:
+        return []
+    results = await asyncio.gather(*[_one(s) for s in sources])
     return [item for sublist in results for item in sublist]
+
+
+def balance_items_by_tag(
+    items: list[KnowledgeItem],
+    *,
+    max_per_tag: int = 4,
+    max_total: int = 30,
+) -> list[KnowledgeItem]:
+    """Interleave items so one tag doesn't dominate the candidate pool."""
+    by_tag: dict[str, list[KnowledgeItem]] = {}
+    for item in items:
+        tag = item.genre or "general"
+        by_tag.setdefault(tag, []).append(item)
+
+    out: list[KnowledgeItem] = []
+    seen_urls: set[str] = set()
+    tags = list(by_tag.keys())
+    idx = 0
+    while len(out) < max_total:
+        progressed = False
+        for tag in tags:
+            bucket = by_tag[tag]
+            if not bucket:
+                continue
+            taken = sum(1 for i in out if (i.genre or "general") == tag)
+            if taken >= max_per_tag:
+                continue
+            item = bucket.pop(0)
+            if item.url in seen_urls:
+                continue
+            seen_urls.add(item.url)
+            out.append(item)
+            progressed = True
+            if len(out) >= max_total:
+                break
+        if not progressed:
+            break
+        idx += 1
+    return out
 
 
 # ── arXiv ────────────────────────────────────────────────────────────────────
@@ -267,9 +433,9 @@ async def search_openai_web(query: str, max_results: int = 5) -> list[KnowledgeI
                 {
                     "role": "user",
                     "content": (
-                        f"Find the {max_results} most recent and significant news stories "
-                        f"or developments about: {query}. For each, include a brief "
-                        "1-2 sentence summary and its URL."
+                        f"Find the {max_results} most recent news stories or developments "
+                        f"from the past 7 days about: {query}. Prefer items published this "
+                        "week. For each, include a brief 1-2 sentence summary and its URL."
                     ),
                 }
             ],
@@ -305,22 +471,51 @@ async def search_openai_web(query: str, max_results: int = 5) -> list[KnowledgeI
 # ── Tavily ───────────────────────────────────────────────────────────────────
 
 
+def _parse_published_date(raw: str | None) -> datetime | None:
+    if not raw:
+        return None
+    text = raw.strip()
+    for candidate in (text, text[:10]):
+        try:
+            return datetime.fromisoformat(candidate.replace("Z", "+00:00")).replace(tzinfo=None)
+        except ValueError:
+            continue
+    return None
+
+
 async def search_tavily(query: str, max_results: int = 5) -> list[KnowledgeItem]:
     """Optional: web search via Tavily (requires TAVILY_API_KEY)."""
+    return await search_tavily_with_options(
+        query,
+        max_results=max_results,
+        topic="news",
+        days=7,
+    )
+
+
+async def search_tavily_with_options(
+    query: str,
+    *,
+    max_results: int = 8,
+    topic: str = "general",
+    days: int | None = None,
+) -> list[KnowledgeItem]:
+    """Tavily search with configurable topic (general for research, news for digests)."""
     settings = get_settings()
     if not settings.tavily_api_key:
         return []
+    payload: dict = {
+        "api_key": settings.tavily_api_key,
+        "query": query,
+        "max_results": max_results,
+        "search_depth": "basic",
+        "topic": topic,
+    }
+    if days is not None and topic == "news":
+        payload["days"] = days
     async with httpx.AsyncClient(timeout=20.0) as client:
         try:
-            resp = await client.post(
-                "https://api.tavily.com/search",
-                json={
-                    "api_key": settings.tavily_api_key,
-                    "query": query,
-                    "max_results": max_results,
-                    "search_depth": "basic",
-                },
-            )
+            resp = await client.post("https://api.tavily.com/search", json=payload)
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:
@@ -333,6 +528,7 @@ async def search_tavily(query: str, max_results: int = 5) -> list[KnowledgeItem]
             url=r["url"],
             summary=r.get("content", "")[:500],
             source="Tavily",
+            published=_parse_published_date(r.get("published_date")),
         )
         for r in data.get("results", [])
     ]

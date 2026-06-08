@@ -8,17 +8,22 @@ Endpoints:
   GET  /api/reading-list/stats     — stats only
   PATCH /api/reading-list/{id}     — update status / progress
   DELETE /api/reading-list/{id}    — hard delete + remove mirror
+  GET  /api/reading-list/{id}/content — markdown body or PDF metadata for in-app reader
+  GET  /api/reading-list/{id}/file    — stream stored PDF
   POST /api/jobs/morning-brief     — manually trigger the morning brief
   GET  /api/jobs/knowledge-brief   — alias kept for backward compat
   GET  /api/morning-brief/latest   — fetch today's brief markdown + date
   GET  /api/plaid/link-token       — create a Plaid Link token for frontend
-  POST /api/plaid/exchange         — exchange Plaid public_token for access_token
+  POST /api/plaid/exchange         — exchange Plaid public_token, store encrypted token
+  GET  /api/plaid/status           — linked banks + config readiness
+  DELETE /api/plaid/items/{item_id} — unlink a bank (Plaid + local DB)
 
 Run:
   uv run python -m src.api.main
 """
 from __future__ import annotations
 
+import re
 import sys
 import uuid
 from contextlib import asynccontextmanager
@@ -27,6 +32,7 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from loguru import logger
 from pydantic import BaseModel
 from sqlmodel import Session
@@ -34,12 +40,15 @@ from sse_starlette.sse import EventSourceResponse
 
 from src.agents.knowledge import build_morning_brief
 from src.config import get_settings
+from src.integrations.google_calendar import google_calendar_status
 from src.orchestrator import handle_message
 from src.scheduler import start_scheduler, stop_scheduler
+from src.services import chat_history as chat_store
 from src.services import reading_list as rl
+from src.services import usage as usage_service
+from src.services import user_config
 from src.storage import ReadingListItem, get_session, init_db
-from src.storage.models import ItemStatus
-from src.integrations.google_calendar import google_calendar_status
+from src.storage.models import ItemKind, ItemStatus
 
 
 def _setup_logging() -> None:
@@ -79,6 +88,26 @@ app.add_middleware(
 UPLOAD_DIR = Path(settings.data_dir) / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+_UPLOAD_TYPE_BY_EXT = {
+    ".pdf": "application/pdf",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+    ".markdown": "text/markdown",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".doc": "application/msword",
+    ".rtf": "application/rtf",
+    ".csv": "text/csv",
+}
+
+
+def _guess_upload_media_type(filename: str | None, content_type: str | None) -> str:
+    ext = Path(filename or "").suffix.lower()
+    if ext in _UPLOAD_TYPE_BY_EXT:
+        return _UPLOAD_TYPE_BY_EXT[ext]
+    if content_type and content_type != "application/octet-stream":
+        return content_type
+    return content_type or "application/octet-stream"
+
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
 
@@ -95,6 +124,8 @@ def require_token(authorization: Annotated[str | None, Header()] = None) -> None
 class ChatRequest(BaseModel):
     message: str
     attachments: list[dict] = []
+    chat_history: list[dict] = []
+    session_id: str | None = None
 
 
 class ReadingListAddRequest(BaseModel):
@@ -104,11 +135,31 @@ class ReadingListAddRequest(BaseModel):
     source: str | None = None
     kind: str = "url"
     tags: str = ""
+    pdf_url: str | None = None
+
+
+class AddSuggestionsRequest(BaseModel):
+    items: list[ReadingListAddRequest]
+    fetch_content: bool = True
 
 
 class ReadingListPatch(BaseModel):
     status: str | None = None
     progress: int | None = None
+
+
+class UserSettingsPatch(BaseModel):
+    daily_reading_minutes_goal: int | None = None
+    daily_practice_minutes_goal: int | None = None
+    active_skills: list[str] | None = None
+    quiet_hours_start: str | None = None
+    quiet_hours_end: str | None = None
+    nudge_morning_brief: bool | None = None
+    nudge_mid_day_reading: bool | None = None
+    nudge_evening_reading: bool | None = None
+    nudge_evening_practice: bool | None = None
+    nudge_weekly_review: bool | None = None
+    nudge_discovery: bool | None = None
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
@@ -118,20 +169,114 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/api/chat/sessions", dependencies=[Depends(require_token)])
+async def list_chat_sessions(
+    session: Annotated[Session, Depends(get_session)],
+    limit: int = 30,
+) -> dict:
+    rows = chat_store.list_sessions(session, limit=min(limit, 100))
+    out = []
+    for row in rows:
+        msgs = chat_store.list_messages(session, row.id)
+        out.append(chat_store.session_to_api(row, message_count=len(msgs)))
+    return {"sessions": out}
+
+
+@app.post("/api/chat/sessions", dependencies=[Depends(require_token)])
+async def create_chat_session(
+    session: Annotated[Session, Depends(get_session)],
+) -> dict:
+    row = chat_store.create_session(session)
+    return chat_store.session_to_api(row)
+
+
+@app.get("/api/chat/sessions/{session_id}/messages", dependencies=[Depends(require_token)])
+async def get_chat_session_messages(
+    session_id: str,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict:
+    row = chat_store.get_session(session, session_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="session not found")
+    msgs = chat_store.list_messages(session, session_id)
+    return {
+        "session": chat_store.session_to_api(row, message_count=len(msgs)),
+        "messages": [chat_store.message_to_api(m) for m in msgs],
+    }
+
+
 @app.post("/api/chat", dependencies=[Depends(require_token)])
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, db: Annotated[Session, Depends(get_session)]):
     """Send a message, get a streaming response via SSE."""
     async def stream():
         try:
+            chat_session = (
+                chat_store.get_session(db, req.session_id)
+                if req.session_id
+                else None
+            )
+            if not chat_session:
+                chat_session = chat_store.create_session(
+                    db,
+                    title=chat_store.title_from_message(req.message),
+                )
+
+            session_id = chat_session.id
+            yield {"event": "session_id", "data": session_id}
+
+            db_history = chat_store.recent_history(db, session_id, limit=20)
+            history = db_history if db_history else req.chat_history
+
+            chat_store.append_message(
+                db,
+                session_id,
+                role="user",
+                content=req.message,
+            )
+            chat_store.maybe_set_title_from_first_message(db, chat_session, req.message)
+
             yield {"event": "status", "data": "thinking"}
-            result = await handle_message(req.message, req.attachments)
-            yield {"event": "message", "data": result.get("reply", "")}
+            result = await handle_message(
+                req.message,
+                req.attachments,
+                history,
+                session_id=session_id,
+            )
+
+            reply = result.get("reply", "")
+            intent = result.get("intent")
+            extra: dict = {}
+            if result.get("digest_items"):
+                extra["digestItems"] = result["digest_items"]
+            if result.get("suggest_items"):
+                extra["suggestItems"] = result["suggest_items"]
+            if result.get("book_items"):
+                extra["bookItems"] = result["book_items"]
+            if result.get("obsidian_path"):
+                extra["obsidianPath"] = result["obsidian_path"]
+
+            chat_store.append_message(
+                db,
+                session_id,
+                role="assistant",
+                content=reply,
+                intent=intent,
+                extra=extra or None,
+            )
+
+            yield {"event": "message", "data": reply}
             if result.get("digest_items"):
                 import json as _json
                 yield {"event": "digest_items", "data": _json.dumps(result["digest_items"])}
+            if result.get("suggest_items"):
+                import json as _json
+                yield {"event": "suggest_items", "data": _json.dumps(result["suggest_items"])}
+            if result.get("book_items"):
+                import json as _json
+                yield {"event": "book_items", "data": _json.dumps(result["book_items"])}
             if result.get("obsidian_path"):
                 yield {"event": "obsidian", "data": result["obsidian_path"]}
-            yield {"event": "intent", "data": result.get("intent", "general")}
+            yield {"event": "intent", "data": intent or "general"}
             yield {"event": "done", "data": "1"}
         except Exception as e:
             logger.exception("chat error")
@@ -140,25 +285,38 @@ async def chat(req: ChatRequest):
     return EventSourceResponse(stream())
 
 
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
+
+
 @app.post("/api/upload", dependencies=[Depends(require_token)])
 async def upload(file: UploadFile = File(...)) -> dict:  # noqa: B008
     file_id = str(uuid.uuid4())
     suffix = Path(file.filename or "").suffix
     dest = UPLOAD_DIR / f"{file_id}{suffix}"
     content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large (max {MAX_UPLOAD_BYTES // (1024 * 1024)} MB)",
+        )
     dest.write_bytes(content)
+    media_type = _guess_upload_media_type(file.filename, file.content_type)
     logger.info("Uploaded {} -> {} ({} bytes)", file.filename, dest, len(content))
     return {
         "file_id": file_id,
         "path": str(dest),
         "size": len(content),
-        "media_type": file.content_type,
+        "media_type": media_type,
+        "filename": file.filename or f"upload{suffix}",
     }
 
 
 # ── Reading list endpoints ─────────────────────────────────────────────────────
 
 def _item_to_dict(item) -> dict:
+    content_format: str | None = None
+    if item.content_path:
+        content_format = "pdf" if item.content_path.endswith(".pdf") else "markdown"
     return {
         "id": item.id,
         "url": item.url,
@@ -172,6 +330,9 @@ def _item_to_dict(item) -> dict:
         "saved_at": item.saved_at.isoformat(),
         "finished_at": item.finished_at.isoformat() if item.finished_at else None,
         "mirror_path": item.mirror_path,
+        "content_path": item.content_path,
+        "has_content": bool(item.content_path),
+        "content_format": content_format,
     }
 
 
@@ -233,11 +394,129 @@ async def add_reading_list_item(
     return {"saved": True, "duplicate": False, "item": _item_to_dict(item)}
 
 
+@app.post("/api/reading-list/add-suggestions", dependencies=[Depends(require_token)])
+async def add_suggestions_to_reading_list(
+    body: AddSuggestionsRequest,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict:
+    """Add one or more chat suggestions to the reading list with optional content fetch."""
+    from src.agents.knowledge import _attach_readable_content, _write_mirror
+    from src.integrations import ObsidianClient
+
+    added: list[dict] = []
+    duplicates: list[dict] = []
+
+    for item_body in body.items:
+        valid_kinds = {k.value for k in ItemKind}
+        kind = ItemKind(item_body.kind) if item_body.kind in valid_kinds else ItemKind.URL
+        item = rl.add(
+            session,
+            url=item_body.url or None,
+            title=item_body.title,
+            summary=item_body.summary,
+            source=item_body.source,
+            kind=kind,
+            tags=item_body.tags,
+        )
+        if item is None:
+            from sqlmodel import select as _select
+
+            existing = None
+            if item_body.url:
+                existing = session.exec(
+                    _select(ReadingListItem).where(ReadingListItem.url == item_body.url)
+                ).first()
+            dup_payload = (
+                _item_to_dict(existing)
+                if existing
+                else {"title": item_body.title, "url": item_body.url}
+            )
+            duplicates.append(dup_payload)
+            continue
+
+        if body.fetch_content and item_body.url:
+            from src.agents.knowledge import _should_save_as_pdf
+
+            if _should_save_as_pdf(
+                item_body.url,
+                kind=item_body.kind,
+                pdf_url=item_body.pdf_url,
+            ):
+                item, _ = await _attach_readable_content(
+                    session,
+                    item,
+                    url=item_body.url,
+                    pdf_url=item_body.pdf_url,
+                    prefer_pdf=True,
+                )
+
+        try:
+            async with ObsidianClient() as obs:
+                mirror_path = await _write_mirror(item, obs)
+            item.mirror_path = mirror_path
+            session.add(item)
+            session.commit()
+            session.refresh(item)
+        except Exception as e:
+            logger.warning("Suggestion save mirror failed: {}", e)
+
+        added.append(_item_to_dict(item))
+
+    return {
+        "added": len(added),
+        "duplicate": len(duplicates),
+        "items": added,
+        "duplicates": duplicates,
+    }
+
+
+@app.post("/api/reading-list/gutenberg/{book_id}", dependencies=[Depends(require_token)])
+async def download_gutenberg_book(
+    book_id: int,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict:
+    """Download a Project Gutenberg book by Gutendex id (from chat book picker)."""
+    from src.agents.knowledge import handle_download_gutenberg_id
+
+    result = await handle_download_gutenberg_id(session, book_id)
+    return result
+
+
 @app.get("/api/reading-list/stats", dependencies=[Depends(require_token)])
 async def get_reading_list_stats(
     session: Annotated[Session, Depends(get_session)],
 ) -> dict:
     return rl.stats(session)
+
+
+@app.get("/api/settings", dependencies=[Depends(require_token)])
+async def get_settings_view(
+    session: Annotated[Session, Depends(get_session)],
+) -> dict:
+    return user_config.all_values(session)
+
+
+@app.patch("/api/settings", dependencies=[Depends(require_token)])
+async def patch_settings_view(
+    body: UserSettingsPatch,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict:
+    updates = body.model_dump(exclude_none=True)
+    for key, value in updates.items():
+        if key == "active_skills":
+            user_config.set_active_skills(session, list(value))
+        elif isinstance(value, bool):
+            user_config.set_value(session, key, "true" if value else "false")
+        else:
+            user_config.set_value(session, key, str(value))
+    return user_config.all_values(session)
+
+
+@app.get("/api/usage/today", dependencies=[Depends(require_token)])
+async def usage_today(
+    session: Annotated[Session, Depends(get_session)],
+) -> dict:
+    return usage_service.today_summary(session)
 
 
 @app.patch("/api/reading-list/{item_id}", dependencies=[Depends(require_token)])
@@ -301,6 +580,74 @@ async def delete_reading_list_item(
     return {"ok": True}
 
 
+@app.get("/api/reading-list/{item_id}/content", dependencies=[Depends(require_token)])
+async def get_reading_item_content(
+    item_id: int,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict:
+    """Return readable content for in-app reader (markdown or PDF reference)."""
+    from src.services import reading_content as rc
+
+    item = rl.find_by_id(session, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    item = await rc.ensure_item_content(
+        session,
+        item,
+        prefer_pdf=bool(item.url and rc.is_probable_pdf_url(item.url)),
+    )
+
+    if item.content_path and item.content_path.endswith(".pdf"):
+        return {
+            "id": item.id,
+            "title": item.title,
+            "url": item.url,
+            "format": "pdf",
+            "summary": item.summary,
+        }
+
+    body = rc.read_markdown(item.content_path)
+    if not body and item.summary:
+        body = f"# {item.title}\n\n{item.summary}"
+    if not body and item.url:
+        body = f"# {item.title}\n\nNo cached content yet. [Open original]({item.url})"
+
+    return {
+        "id": item.id,
+        "title": item.title,
+        "url": item.url,
+        "format": "markdown",
+        "body": body or "",
+        "summary": item.summary,
+    }
+
+
+@app.get("/api/reading-list/{item_id}/file", dependencies=[Depends(require_token)])
+async def get_reading_item_file(
+    item_id: int,
+    session: Annotated[Session, Depends(get_session)],
+) -> FileResponse:
+    """Stream stored PDF for an reading-list item."""
+    from src.services import reading_content as rc
+
+    item = rl.find_by_id(session, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    item = await rc.ensure_item_content(session, item, prefer_pdf=True)
+    path = rc.resolve_content_path(item.content_path)
+    if not path or path.suffix.lower() != ".pdf":
+        raise HTTPException(status_code=404, detail="No PDF available for this item")
+
+    safe_name = re.sub(r"[^\w\s-]", "", item.title).strip() or "document"
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        filename=f"{safe_name}.pdf",
+    )
+
+
 # ── Morning brief endpoints ────────────────────────────────────────────────────
 
 @app.post("/api/jobs/morning-brief", dependencies=[Depends(require_token)])
@@ -359,12 +706,26 @@ async def google_calendar_health() -> dict:
     return google_calendar_status()
 
 
+@app.get("/api/integrations/apple-books/health", dependencies=[Depends(require_token)])
+async def apple_books_health() -> dict:
+    """Check Apple Books MCP connectivity (macOS Books app)."""
+    from src.integrations.apple_books import AppleBooksError, books_in_progress
+
+    try:
+        sample = await books_in_progress(limit=1)
+        return {"connected": True, "sample": sample[:200] if sample else ""}
+    except AppleBooksError as exc:
+        return {"connected": False, "error": str(exc)}
+
+
 @app.get("/api/chandler/agenda", dependencies=[Depends(require_token)])
-async def get_chandler_agenda() -> dict:
-    """Return today's agenda as structured JSON for the frontend Agenda view."""
-    from src.agents.calendar_agent import handle_agenda
-    result = await handle_agenda("what's on today?")
-    return {"reply": result.get("reply", "")}
+async def get_chandler_agenda(scope: str = "today") -> dict:
+    """Return today's or this week's agenda as structured JSON for the Agenda view."""
+    from src.agents.calendar_agent import fetch_agenda
+
+    if scope not in ("today", "week"):
+        scope = "today"
+    return await fetch_agenda(scope)
 
 
 @app.get("/api/people", dependencies=[Depends(require_token)])
@@ -372,18 +733,50 @@ async def list_people() -> dict:
     """List all person notes (frontmatter only)."""
     from src.services import people
     all_p = people.list_all()
-    return {"people": [
-        {"filename": p["filename"], "frontmatter": p["frontmatter"], "body_preview": p["body_preview"]}
-        for p in all_p
-    ]}
+    return {
+        "people": [
+            {
+                "filename": p["filename"],
+                "frontmatter": p["frontmatter"],
+                "body_preview": p["body_preview"],
+            }
+            for p in all_p
+        ]
+    }
 
 
 # ── Plaid endpoints ────────────────────────────────────────────────────────────
 
+def _plaid_configured() -> bool:
+    s = get_settings()
+    return bool(s.plaid_client_id and s.plaid_secret)
+
+
+@app.get("/api/plaid/status", dependencies=[Depends(require_token)])
+async def plaid_status(session: Annotated[Session, Depends(get_session)]) -> dict:
+    from src.services import plaid_items as pi
+
+    settings = get_settings()
+    items = pi.list_items(session)
+    return {
+        "configured": _plaid_configured(),
+        "encryption_configured": bool(settings.plaid_token_encryption_key),
+        "linked": len(items) > 0,
+        "env": settings.plaid_env,
+        "items": [pi.item_summary(row) for row in items],
+    }
+
+
 @app.get("/api/plaid/link-token", dependencies=[Depends(require_token)])
 async def plaid_link_token() -> dict:
+    if not _plaid_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Plaid is not configured — set PLAID_CLIENT_ID and PLAID_SECRET in .env",
+        )
     try:
         from src.integrations.plaid_client import PlaidClient
+
         client = PlaidClient()
         token = await client.create_link_token(user_id="local-user")
         return {"link_token": token}
@@ -397,16 +790,57 @@ class PlaidExchangeRequest(BaseModel):
 
 
 @app.post("/api/plaid/exchange", dependencies=[Depends(require_token)])
-async def plaid_exchange(req: PlaidExchangeRequest) -> dict:
+async def plaid_exchange(
+    req: PlaidExchangeRequest,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict:
+    if not _plaid_configured():
+        raise HTTPException(status_code=503, detail="Plaid is not configured")
+    if not get_settings().plaid_token_encryption_key:
+        raise HTTPException(
+            status_code=503,
+            detail="PLAID_TOKEN_ENCRYPTION_KEY not set — cannot store bank tokens securely",
+        )
     try:
         from src.integrations.plaid_client import PlaidClient
+        from src.services import plaid_items as pi
+
         client = PlaidClient()
-        access = await client.exchange_public_token(req.public_token)
-        logger.info("Plaid link complete (token prefix: {}...)", access[:8])
-        return {"ok": True}
+        linked = await client.exchange_public_token(req.public_token)
+        row = pi.upsert_item(
+            session,
+            item_id=linked["item_id"],
+            institution_name=linked["institution_name"],
+            access_token=linked["access_token"],
+        )
+        return {"ok": True, "item": pi.item_summary(row)}
     except Exception as e:
         logger.exception("plaid exchange failed")
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.delete("/api/plaid/items/{item_id}", dependencies=[Depends(require_token)])
+async def plaid_unlink_item(
+    item_id: str,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict:
+    from src.integrations.plaid_client import PlaidClient
+    from src.services import plaid_items as pi
+
+    row = pi.get_by_item_id(session, item_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Bank link not found")
+
+    try:
+        access_token = pi.access_token_for_item(row)
+        if _plaid_configured():
+            client = PlaidClient()
+            await client.remove_item(access_token)
+    except Exception as e:
+        logger.warning("Plaid item/remove failed for {}: {}", item_id, e)
+
+    pi.delete_item(session, item_id)
+    return {"ok": True}
 
 
 def main() -> None:

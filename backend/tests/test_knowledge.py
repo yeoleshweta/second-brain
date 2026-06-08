@@ -4,12 +4,17 @@ from __future__ import annotations
 import pytest
 
 from src.agents.knowledge import (
+    classify_sub_intent,
     is_delete_command,
     is_digest_command,
     is_list_command,
     is_mark_command,
+    is_practice_log_command,
+    is_practice_status_command,
     is_progress_command,
+    is_query_command,
     is_save_command,
+    is_suggest_command,
     is_summarize_command,
 )
 
@@ -126,6 +131,31 @@ def test_is_summarize_command():
     assert is_summarize_command("what does this say https://x.com/article") is True
     # No URL → False
     assert is_summarize_command("summarize transformers for me") is False
+
+
+def test_query_and_suggest_detection():
+    ok, topic = is_query_command("what do I know about mamba")
+    assert ok is True
+    assert topic.lower() == "mamba"
+    suggest_ok, mins = is_suggest_command("suggest something for a 15 min read")
+    assert suggest_ok is True
+    assert mins == 15
+
+
+def test_practice_detection():
+    ok, skill, mins = is_practice_log_command("practiced guitar for 45 min")
+    assert ok is True
+    assert skill == "guitar"
+    assert mins == 45
+    assert is_practice_status_command("how's my practice going") is True
+
+
+def test_sub_intent_classification_priority():
+    assert classify_sub_intent("stop nagging") == "pause_nudges"
+    assert classify_sub_intent("set reading goal to 20 min") == "set_reading_goal"
+    assert classify_sub_intent("clear my reading list") == "clear_list"
+    assert classify_sub_intent("confirm clear all") == "confirm_clear_list"
+    assert classify_sub_intent("save me from this meeting") == "chat"
 
 
 # ── integration: build_morning_brief ──────────────────────────────────────────

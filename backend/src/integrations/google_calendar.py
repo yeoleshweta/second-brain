@@ -14,57 +14,16 @@ import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from loguru import logger
 
 from src.config import get_settings
-
-SCOPES = [
-    "https://www.googleapis.com/auth/calendar",
-    "https://www.googleapis.com/auth/contacts.readonly",
-]
-
-
-def _load_credentials() -> Credentials | None:
-    settings = get_settings()
-    if not settings.google_token_path:
-        return None
-    token_path = Path(settings.google_token_path)
-    if not token_path.exists():
-        return None
-    creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        token_path.write_text(creds.to_json())
-    return creds
-
-
-def run_oauth_flow() -> None:
-    """One-time interactive OAuth setup. Call from a command line."""
-    settings = get_settings()
-    if not settings.google_oauth_client_secrets:
-        raise RuntimeError("GOOGLE_OAUTH_CLIENT_SECRETS not set in .env")
-
-    secrets_path = Path(settings.google_oauth_client_secrets)
-    if not secrets_path.exists():
-        raise FileNotFoundError(
-            f"Missing {secrets_path}. Download OAuth client JSON from Google Cloud Console."
-        )
-
-    flow = InstalledAppFlow.from_client_secrets_file(str(secrets_path), SCOPES)
-    creds = flow.run_local_server(port=0)
-    token_path = Path(settings.google_token_path or "./secrets/google_token.json")
-    token_path.parent.mkdir(parents=True, exist_ok=True)
-    token_path.write_text(creds.to_json())
-    logger.info("Google OAuth token saved to {}", token_path)
+from src.integrations.google_auth import load_google_credentials, run_google_oauth_flow
 
 
 class GoogleCalendarClient:
     def __init__(self) -> None:
-        creds = _load_credentials()
+        creds = load_google_credentials()
         if not creds:
             raise RuntimeError(
                 "Google credentials missing. Run: uv run python -m src.integrations.google_calendar auth"
@@ -186,6 +145,6 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) > 1 and sys.argv[1] == "auth":
-        run_oauth_flow()
+        run_google_oauth_flow()
     else:
         print("Usage: python -m src.integrations.google_calendar auth")

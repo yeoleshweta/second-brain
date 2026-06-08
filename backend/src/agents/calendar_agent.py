@@ -41,6 +41,13 @@ _AGENDA_RE = re.compile(
     r"what (do i have|am i doing) today|my schedule)\b",
     re.IGNORECASE,
 )
+_INBOX_RE = re.compile(
+    r"\b("
+    r"my (email|inbox|gmail)|unread email|anything in my email|"
+    r"important email|email today|check my email"
+    r")\b",
+    re.IGNORECASE,
+)
 _FIND_PERSON_RE = re.compile(
     r"\b(what do i know about|info on|who is|tell me about)\b\s+(.+)",
     re.IGNORECASE,
@@ -72,6 +79,8 @@ def classify_chandler_intent(msg: str) -> str:
     # Agenda must be checked before schedule — "my schedule" should show agenda, not create one
     if _AGENDA_RE.search(msg):
         return "agenda"
+    if _INBOX_RE.search(msg):
+        return "inbox"
     if _SCHEDULE_RE.search(msg):
         return "schedule"
     m = _FIND_PERSON_RE.search(msg)
@@ -193,16 +202,116 @@ def _google_not_connected_reply() -> dict:
             "reply": (
                 "📅 Chandler: I'm not connected to Google Calendar yet. "
                 "See `docs/phase-2-iphone-setup.md` for the one-time setup."
-            )
+            ),
+            "connected": False,
         }
     if not settings.google_token_path or not Path(settings.google_token_path).exists():
         return {
             "reply": (
                 "📅 Chandler: Google not authorized yet. "
                 "Run: `cd backend && uv run python -m src.integrations.google_calendar auth`"
-            )
+            ),
+            "connected": False,
         }
     return {}
+
+
+def _chandler(**kwargs) -> dict:
+    result: dict = {"intent": "calendar"}
+    result.update(kwargs)
+    return result
+
+
+def _parse_calendar_event(ev: dict) -> dict:
+    """Normalize a Google Calendar event for agenda UI and chat replies."""
+    start = ev.get("start", {})
+    start_str = start.get("dateTime") or start.get("date", "")
+    try:
+        start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+        time_label = start_dt.strftime("%-I:%M%p").lower()
+    except Exception:
+        time_label = start_str
+
+    summary = ev.get("summary", "(no title)")
+    attendee_names = [
+        a.get("displayName") or a.get("email", "")
+        for a in ev.get("attendees", [])
+        if not a.get("self")
+    ]
+
+    prep_note: str | None = None
+    for aname in attendee_names:
+        matches = people.find(aname)
+        if matches:
+            fm = matches[0]["frontmatter"]
+            if fm.get("last_interaction"):
+                prep_note = fm["last_interaction"]
+                break
+
+    return {
+        "id": ev.get("id", ""),
+        "summary": summary,
+        "start": start_str,
+        "time_label": time_label,
+        "attendees": attendee_names,
+        "prep_note": prep_note,
+    }
+
+
+def _format_agenda_reply(parsed_events: list[dict], *, is_week: bool) -> str:
+    lines = ["📅 Here's what's coming up:\n"]
+    for ev in parsed_events:
+        line = f"- **{ev['time_label']}** — {ev['summary']}"
+        if ev["attendees"]:
+            line += f" (with {', '.join(ev['attendees'])})"
+        if ev.get("prep_note"):
+            line += f"\n  _Prep: last talked about: {ev['prep_note']}_"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+async def fetch_agenda(scope: str = "today") -> dict:
+    """Structured agenda for API and chat handlers. scope: 'today' | 'week'."""
+    guard = _google_not_connected_reply()
+    if guard:
+        return {**guard, "events": [], "scope": scope}
+
+    is_week = scope == "week"
+    hours = 24 * 7 if is_week else 24
+
+    from src.integrations.google_calendar import GoogleCalendarClient
+
+    try:
+        client = GoogleCalendarClient()
+        raw_events = await client.list_upcoming_events(hours=hours)
+    except Exception as e:
+        return {
+            "reply": f"📅 Chandler: couldn't reach Google Calendar — {e}",
+            "events": [],
+            "connected": True,
+            "scope": scope,
+            "error": str(e),
+        }
+
+    parsed = [_parse_calendar_event(ev) for ev in raw_events]
+    if not parsed:
+        scope_label = "this week" if is_week else "the rest of today"
+        return {
+            "reply": (
+                f"📅 Chandler: nothing on the calendar for {scope_label}. "
+                "Want to add something?"
+            ),
+            "events": [],
+            "connected": True,
+            "scope": scope,
+        }
+
+    return {
+        "reply": _format_agenda_reply(parsed, is_week=is_week),
+        "events": parsed,
+        "connected": True,
+        "scope": scope,
+    }
 
 
 # ── Handlers ───────────────────────────────────────────────────────────────────
@@ -380,64 +489,38 @@ async def _do_update_person(payload: dict) -> dict:
     }
 
 
-async def handle_agenda(msg: str) -> dict:
+async def handle_inbox(_msg: str) -> dict:
+    from src.integrations.google_gmail import GmailClient
+
     guard = _google_not_connected_reply()
     if guard:
         return guard
-
-    # Determine window: "this week" → rest of week; default → rest of today
-    is_week = bool(re.search(r"\bthis week\b", msg, re.IGNORECASE))
-    hours = 24 * 7 if is_week else 24
-
-    from src.integrations.google_calendar import GoogleCalendarClient
     try:
-        client = GoogleCalendarClient()
-        events = await client.list_upcoming_events(hours=hours)
+        client = GmailClient()
+        messages = await client.list_unread_important(max_results=8)
     except Exception as e:
-        return {"reply": f"📅 Chandler: couldn't reach Google Calendar — {e}"}
+        return {"reply": f"📅 Chandler: couldn't read Gmail — {e}"}
 
-    if not events:
-        scope = "this week" if is_week else "the rest of today"
-        return {
-            "reply": (
-                f"📅 Chandler: nothing on the calendar for {scope}. "
-                "Want to add something?"
-            )
-        }
+    if not messages:
+        return {"reply": "📅 Chandler: inbox zero — no unread messages."}
 
-    lines = ["📅 Here's what's coming up:\n"]
-    for ev in events:
-        start = ev.get("start", {})
-        start_str = start.get("dateTime") or start.get("date", "")
-        try:
-            start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-            time_label = start_dt.strftime("%-I:%M%p").lower()
-        except Exception:
-            time_label = start_str
-
-        summary = ev.get("summary", "(no title)")
-        attendee_names = [
-            a.get("displayName") or a.get("email", "")
-            for a in ev.get("attendees", [])
-            if not a.get("self")
-        ]
-
-        line = f"- **{time_label}** — {summary}"
-        if attendee_names:
-            line += f" (with {', '.join(attendee_names)})"
-
-        # Prep note from people file
-        for aname in attendee_names:
-            matches = people.find(aname)
-            if matches:
-                fm = matches[0]["frontmatter"]
-                if fm.get("last_interaction"):
-                    line += f"\n  _Prep: last talked about: {fm['last_interaction']}_"
-                break
-
+    lines = ["📅 **Unread email**\n"]
+    for msg in messages:
+        subj = msg.get("subject", "(no subject)")
+        who = msg.get("from") or msg.get("from_email") or "Unknown"
+        snippet = (msg.get("snippet") or "").replace("\n", " ")[:100]
+        line = f"- **{subj}** — {who}"
+        if snippet:
+            line += f"\n  _{snippet}_"
         lines.append(line)
-
+    lines.append("\n_(Read-only — I won't send mail without you confirming.)_")
     return {"reply": "\n".join(lines)}
+
+
+async def handle_agenda(msg: str) -> dict:
+    is_week = bool(re.search(r"\bthis week\b", msg, re.IGNORECASE))
+    result = await fetch_agenda("week" if is_week else "today")
+    return _chandler(reply=result.get("reply", ""))
 
 
 async def handle_find_person(msg: str) -> dict:
@@ -561,32 +644,12 @@ async def morning_section() -> str:
         return "## 📅 Chandler's Schedule\n\nNothing scheduled today.\n"
 
     lines = ["## 📅 Chandler's Schedule\n"]
-    for ev in events:
-        start = ev.get("start", {})
-        start_str = start.get("dateTime") or start.get("date", "")
-        try:
-            start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-            time_label = start_dt.strftime("%-I:%M%p").lower()
-        except Exception:
-            time_label = start_str
-
-        summary = ev.get("summary", "(no title)")
-        attendees = [
-            a.get("displayName") or a.get("email", "")
-            for a in ev.get("attendees", [])
-            if not a.get("self")
-        ]
-
-        line = f"- **{time_label}** — {summary}"
-        if attendees:
-            line += f" · {', '.join(attendees)}"
-
-        for aname in attendees:
-            matches = people.find(aname)
-            if matches and matches[0]["frontmatter"].get("last_interaction"):
-                line += f"\n  _(Prep: {matches[0]['frontmatter']['last_interaction']})_"
-                break
-
+    for parsed in (_parse_calendar_event(ev) for ev in events):
+        line = f"- **{parsed['time_label']}** — {parsed['summary']}"
+        if parsed["attendees"]:
+            line += f" · {', '.join(parsed['attendees'])}"
+        if parsed.get("prep_note"):
+            line += f"\n  _(Prep: {parsed['prep_note']})_"
         lines.append(line)
 
     return "\n".join(lines) + "\n"
@@ -601,21 +664,23 @@ async def run(state: AgentState) -> dict:
     # Confirmation flow takes priority
     pending = pa.peek_pending()
     if pending and is_yes_no_or_cancel(msg):
-        return await handle_confirmation(msg, pending)
+        return _chandler(**(await handle_confirmation(msg, pending)))
 
     # Edge case: "nothing pending" confirmation attempt
     if is_yes_no_or_cancel(msg):
-        return {"reply": "📅 Chandler: nothing pending to confirm."}
+        return _chandler(reply="📅 Chandler: nothing pending to confirm.")
 
     intent = classify_chandler_intent(msg)
     if intent == "schedule":
-        return await handle_schedule(msg)
+        return _chandler(**(await handle_schedule(msg)))
     if intent == "agenda":
         return await handle_agenda(msg)
+    if intent == "inbox":
+        return _chandler(**(await handle_inbox(msg)))
     if intent == "find_person":
-        return await handle_find_person(msg)
+        return _chandler(**(await handle_find_person(msg)))
     if intent == "add_person":
-        return await handle_add_person(msg)
+        return _chandler(**(await handle_add_person(msg)))
     if intent == "update_person":
-        return await handle_update_person(msg)
-    return await handle_chat(msg)
+        return _chandler(**(await handle_update_person(msg)))
+    return _chandler(**(await handle_chat(msg)))

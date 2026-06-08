@@ -22,6 +22,8 @@ dependencies = [
     # Knowledge agent
     "feedparser>=6.0.0",
     "arxiv>=2.1.0",
+    "pyyaml>=6.0.0",
+    "pypdf>=5.0.0",
 
     # Calendar / people agent
     "python-frontmatter>=1.1.0",

@@ -1,188 +1,161 @@
-import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { Book, Heart, DollarSign, Calendar, Sparkles, FileText, ExternalLink, BookmarkPlus, Check, Loader2 } from 'lucide-react'
-import { saveItemDirect } from '@/lib/api'
-import type { DigestItem, Message, Intent } from '@/types'
+import type { Components } from 'react-markdown'
+import { AGENT_BY_INTENT } from '@/agents'
+import { CharacterAvatarByAgentId } from '@/components/friends/CharacterAvatar'
+import { SuggestionPicker } from '@/components/SuggestionPicker'
+import { BookPicker } from '@/components/BookPicker'
+import { openExternalUrl, isExternalUrl } from '@/lib/openExternal'
+import type { Message } from '@/types'
 
-const intentMeta: Record<Intent, { icon: typeof Book; label: string; color: string }> = {
-  knowledge: { icon: Book, label: 'Ross', color: 'text-purple-400' },
-  health: { icon: Heart, label: 'Health', color: 'text-rose-400' },
-  finance: { icon: DollarSign, label: 'Finance', color: 'text-emerald-400' },
-  calendar: { icon: Calendar, label: 'Calendar', color: 'text-amber-400' },
-  general: { icon: Sparkles, label: 'General', color: 'text-ink-300' },
+const markdownLinkComponents: Components = {
+  a: ({ href, children }) => {
+    if (!href) return <span>{children}</span>
+    const external = isExternalUrl(href)
+    if (external) {
+      return (
+        <button
+          type="button"
+          className="text-friends-purple underline underline-offset-2 decoration-friends-purple/40 hover:text-friends-purple-dark transition text-left"
+          onClick={() => openExternalUrl(href)}
+        >
+          {children}
+        </button>
+      )
+    }
+    return (
+      <a href={href} className="text-friends-purple underline underline-offset-2">
+        {children}
+      </a>
+    )
+  },
 }
 
-// ── Digest item card ─────────────────────────────────────────────────────────
-
-type SaveState = 'idle' | 'saving' | 'saved' | 'duplicate'
-
-function DigestCard({ item }: { item: DigestItem }) {
-  const [saveState, setSaveState] = useState<SaveState>('idle')
-  const [expanded, setExpanded] = useState(false)
-
-  const summary = item.summary?.trim()
-  const shortSummary = summary && summary.length > 160 ? summary.slice(0, 160).trimEnd() + '…' : summary
-
-  const handleSave = async () => {
-    setSaveState('saving')
-    try {
-      const result = await saveItemDirect({
-        url: item.url,
-        title: item.title,
-        summary: item.summary,
-        source: item.source,
-        kind: item.kind,
-      })
-      setSaveState(result.duplicate ? 'duplicate' : 'saved')
-    } catch {
-      setSaveState('idle')
-    }
-  }
-
-  const saveLabel = {
-    idle: 'Save',
-    saving: 'Saving…',
-    saved: 'Saved ✓',
-    duplicate: 'Already saved',
-  }[saveState]
-
+// ── Thinking dots ─────────────────────────────────────────────────────────────
+function ThinkingDots() {
   return (
-    <div className="bg-ink-700 rounded-xl p-3 space-y-2 border border-ink-600">
-      {/* Title + source row */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          {item.url ? (
-            <a
-              href={item.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm font-medium text-ink-100 hover:text-blue-400 flex items-start gap-1 leading-snug"
-            >
-              <span className="break-words">{item.title}</span>
-              <ExternalLink size={11} className="shrink-0 mt-0.5 opacity-60" />
-            </a>
-          ) : (
-            <span className="text-sm font-medium text-ink-100 leading-snug">{item.title}</span>
-          )}
-          <div className="flex items-center gap-2 mt-1 flex-wrap">
-            {item.source && (
-              <span className="text-xs bg-ink-600 text-ink-300 px-1.5 py-0.5 rounded-full">
-                {item.source}
-              </span>
-            )}
-            {item.date && item.date !== 'n/a' && (
-              <span className="text-xs text-ink-500">{item.date}</span>
-            )}
-          </div>
-        </div>
-
-        {/* Save button */}
-        <button
-          onClick={handleSave}
-          disabled={saveState !== 'idle'}
-          title={saveLabel}
-          className={`shrink-0 flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg min-h-[32px] transition font-medium ${
-            saveState === 'idle'
-              ? 'bg-blue-600 hover:bg-blue-500 text-white'
-              : saveState === 'saving'
-              ? 'bg-ink-600 text-ink-400 cursor-not-allowed'
-              : 'bg-emerald-800 text-emerald-300 cursor-default'
-          }`}
-        >
-          {saveState === 'saving' ? (
-            <Loader2 size={12} className="animate-spin" />
-          ) : saveState === 'saved' || saveState === 'duplicate' ? (
-            <Check size={12} />
-          ) : (
-            <BookmarkPlus size={12} />
-          )}
-          <span className="hidden sm:inline">{saveLabel}</span>
-        </button>
-      </div>
-
-      {/* Summary */}
-      {summary && (
-        <div className="text-xs text-ink-300 leading-relaxed">
-          {expanded || !shortSummary ? summary : shortSummary}
-          {!expanded && shortSummary && shortSummary !== summary && (
-            <button
-              onClick={() => setExpanded(true)}
-              className="ml-1 text-blue-400 hover:text-blue-300"
-            >
-              more
-            </button>
-          )}
-        </div>
-      )}
+    <div className="flex items-center gap-1.5 px-1 py-0.5" aria-label="Thinking…">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="w-2 h-2 rounded-full bg-paper-400"
+          style={{ animation: `dotBounce 1.2s ease-in-out ${i * 0.18}s infinite` }}
+        />
+      ))}
     </div>
   )
 }
 
-// ── Main bubble ──────────────────────────────────────────────────────────────
+// ── Obsidian save badge ───────────────────────────────────────────────────────
+function ObsidianBadge({ path }: { path: string }) {
+  const short = path.replace(/^.*\/SecondBrain\//, '').replace(/^.*\/Documents\//, '')
+  return (
+    <div className="flex items-center gap-1.5 mt-2 py-1.5 px-2.5 bg-sage-100 rounded-lg w-fit max-w-full">
+      <span className="text-xs shrink-0">🪄</span>
+      <span className="text-[10px] font-mono text-sage-500 leading-none truncate">{short}</span>
+    </div>
+  )
+}
 
-export function MessageBubble({ message }: { message: Message }) {
-  const isUser = message.role === 'user'
-  const intent = message.intent ? intentMeta[message.intent] : null
-  const Icon = intent?.icon
+// ── User message ──────────────────────────────────────────────────────────────
+function UserBubble({ content }: { content: string }) {
+  return (
+    <div className="flex justify-end py-1">
+      <div className="max-w-[85%] md:max-w-[65%]">
+        <div className="bg-friends-purple text-white rounded-[22px] rounded-br-[6px] px-4 py-2.5 shadow-card border border-friends-purple-dark/30">
+          <p className="text-sm leading-relaxed break-words">{content}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Assistant message ─────────────────────────────────────────────────────────
+function AssistantBubble({ message }: { message: Message }) {
+  const { content, status, intent, obsidianPath, digestItems, suggestItems, bookItems } = message
+  const agent = intent ? AGENT_BY_INTENT[intent] : null
+  const isThinking = status === 'thinking' && !content
+  const isError = status === 'error'
+
+  const agentDef = intent ? AGENT_BY_INTENT[intent] : null
+  const agentId = agentDef?.id ?? 'knowledge'
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} my-3`}>
-      <div
-        className={`max-w-2xl rounded-2xl px-4 py-3 ${
-          isUser ? 'bg-blue-600 text-white' : 'bg-ink-800 text-ink-100'
-        }`}
-      >
-        {!isUser && intent && Icon && (
-          <div className={`flex items-center gap-1.5 text-xs mb-2 ${intent.color}`}>
-            <Icon size={14} />
-            <span>{intent.label}</span>
+    <div className="flex items-end gap-2.5 py-1">
+      {agentDef ? (
+        <CharacterAvatarByAgentId agentId={agentId} size="md" framed />
+      ) : (
+        <div className="w-9 h-9 rounded-xl bg-paper-200 flex items-center justify-center text-lg shrink-0 self-end mb-0.5 shadow-card">
+          🤖
+        </div>
+      )}
+
+      <div className="flex-1 min-w-0">
+        {agent && (
+          <div className="flex items-center gap-1.5 mb-1.5 ml-0.5">
+            <span className="text-xs font-bold text-paper-600">{agent.name}</span>
+            <span
+              className={`hidden sm:inline text-[10px] font-semibold px-2 py-0.5 rounded-full ${agent.badgeBg} ${agent.badgeFg}`}
+            >
+              {agent.specialty}
+            </span>
           </div>
         )}
 
-        {message.status === 'thinking' ? (
-          <div className="flex gap-1.5 py-1">
-            <Dot delay="0ms" />
-            <Dot delay="150ms" />
-            <Dot delay="300ms" />
-          </div>
-        ) : (
-          <>
-            <div className="prose-chat">
-              <ReactMarkdown>{message.content}</ReactMarkdown>
+        <div
+          className={`max-w-[85%] md:max-w-[65%] bg-white rounded-[22px] rounded-bl-[6px] px-4 py-3 shadow-card border-2 ${
+            agent ? agent.borderColor : 'border-paper-100'
+          } ${isError ? 'bg-rust-100 border-rust-400/30' : ''}`}
+        >
+          {isThinking ? (
+            <ThinkingDots />
+          ) : (
+            <div className="prose-chat text-sm leading-relaxed break-words">
+              <ReactMarkdown components={markdownLinkComponents}>{content}</ReactMarkdown>
             </div>
+          )}
 
-            {/* Digest cards */}
-            {message.digestItems && message.digestItems.length > 0 && (
-              <div className="mt-3 space-y-2">
-                {message.digestItems.map((item, i) => (
-                  <DigestCard key={item.url || i} item={item} />
-                ))}
-              </div>
-            )}
-          </>
-        )}
+          {obsidianPath && <ObsidianBadge path={obsidianPath} />}
+        </div>
 
-        {message.attachments && message.attachments.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            {message.attachments.map((a) => (
-              <div
-                key={a.fileId}
-                className="flex items-center gap-1.5 bg-ink-700 rounded-md px-2 py-1 text-xs"
+        {/* Full-width pickers — outside the narrow message bubble */}
+        {digestItems && digestItems.length > 0 && !suggestItems?.length && !bookItems?.length && (
+          <div className="mt-2 space-y-1.5 w-full min-w-0">
+            {digestItems.slice(0, 5).map((item) => (
+              <a
+                key={item.url}
+                href={item.url}
+                onClick={(e) => {
+                  e.preventDefault()
+                  openExternalUrl(item.url)
+                }}
+                className="flex items-start gap-2.5 bg-white border border-paper-100 rounded-xl px-3 py-3 shadow-card active:bg-paper-50 transition group min-h-[48px] touch-manipulation cursor-pointer w-full min-w-0"
               >
-                <FileText size={12} />
-                {a.name}
-              </div>
+                <div className="w-7 h-7 rounded-lg bg-paper-100 flex items-center justify-center text-sm shrink-0 mt-0.5">
+                  {item.kind === 'paper' ? '📄' : '🔗'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-paper-800 group-hover:text-accent-500 leading-snug line-clamp-2">
+                    {item.title}
+                  </p>
+                  {item.summary && (
+                    <p className="text-[10px] text-paper-500 mt-1 line-clamp-2 leading-relaxed">
+                      {item.summary}
+                    </p>
+                  )}
+                  <p className="text-[10px] text-paper-400 mt-0.5 truncate">{item.source}</p>
+                </div>
+              </a>
             ))}
           </div>
         )}
 
-        {message.obsidianPath && (
-          <div className="mt-2 text-xs text-ink-400 flex items-center gap-1.5">
-            <FileText size={12} />
-            <span>
-              Saved to{' '}
-              <code className="bg-ink-700 px-1 rounded">{message.obsidianPath}</code>
-            </span>
+        {suggestItems && suggestItems.length > 0 && (
+          <SuggestionPicker items={suggestItems} />
+        )}
+
+        {bookItems && bookItems.length > 0 && (
+          <div className="mt-2 w-full min-w-0">
+            <BookPicker items={bookItems} />
           </div>
         )}
       </div>
@@ -190,11 +163,11 @@ export function MessageBubble({ message }: { message: Message }) {
   )
 }
 
-function Dot({ delay }: { delay: string }) {
-  return (
-    <span
-      className="inline-block w-2 h-2 rounded-full bg-ink-400 animate-bounce"
-      style={{ animationDelay: delay }}
-    />
+// ── Public export ─────────────────────────────────────────────────────────────
+export function MessageBubble({ message }: { message: Message }) {
+  return message.role === 'user' ? (
+    <UserBubble content={message.content} />
+  ) : (
+    <AssistantBubble message={message} />
   )
 }

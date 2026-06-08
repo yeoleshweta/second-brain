@@ -10,13 +10,19 @@ from src.config import get_settings
 # Re-export models so callers can do `from src.storage import ReadingListItem`
 from src.storage.models import (  # noqa: F401
     AuditLog,
+    ChatMessage,
+    ChatSession,
     FoodEntry,
     HealthMetricDaily,
     ItemKind,
     ItemStatus,
     PlaidItem,
+    PracticeSession,
     ReadingListItem,
     Transaction,
+    UsageEvent,
+    UserConfig,
+    VocabularyEntry,
 )
 
 _engine = None
@@ -39,7 +45,26 @@ engine = property(_get_engine)
 
 def init_db() -> None:
     """Create all tables (idempotent)."""
-    SQLModel.metadata.create_all(_get_engine())
+    engine = _get_engine()
+    SQLModel.metadata.create_all(engine)
+    _migrate_schema(engine)
+    # Seed user config defaults once tables exist.
+    from src.services.user_config import ensure_defaults
+
+    with Session(engine) as session:
+        ensure_defaults(session)
+
+
+def _migrate_schema(engine) -> None:
+    """Lightweight SQLite migrations for existing local databases."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        rows = conn.execute(text("PRAGMA table_info(reading_list_items)")).fetchall()
+        columns = {row[1] for row in rows}
+        if "content_path" not in columns:
+            conn.execute(text("ALTER TABLE reading_list_items ADD COLUMN content_path TEXT"))
+            conn.commit()
 
 
 def get_session() -> Generator[Session, None, None]:

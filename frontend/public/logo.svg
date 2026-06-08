@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="96" fill="#6B3FA0"/>
+
+  <!-- Simple orange couch — single mark, no text or badges -->
+  <g transform="translate(56 148) scale(3.55)">
+    <rect x="2" y="4" width="104" height="50" rx="8" stroke="#F4D03F" stroke-width="2.5" fill="none" opacity="0.9"/>
+    <path d="M12 28 C12 16 22 10 54 10 C86 10 96 16 96 28 L96 36 L12 36 Z" fill="#C85018"/>
+    <path d="M16 28 C16 18 26 14 54 14 C82 14 92 18 92 28 L92 32 L16 32 Z" fill="#E8751A"/>
+    <rect x="8" y="28" width="12" height="18" rx="6" fill="#B84510"/>
+    <rect x="88" y="28" width="12" height="18" rx="6" fill="#B84510"/>
+    <rect x="22" y="36" width="28" height="12" rx="5" fill="#D96014"/>
+    <rect x="58" y="36" width="28" height="12" rx="5" fill="#D96014"/>
+  </g>
+</svg>

@@ -41,8 +41,10 @@ class Settings(BaseSettings):
 
     # Knowledge
     tavily_api_key: str | None = None
-    knowledge_rss_feeds: str = ""  # comma-separated; leave blank to use built-in multi-genre defaults
+    knowledge_rss_feeds: str = ""  # comma-separated override; blank uses config/feeds.yaml
+    knowledge_feeds_config: Path = Path("config/feeds.yaml")
     knowledge_interests: str = "AI,engineering,science,business,design"  # comma-separated genres
+    book_unofficial_links: bool = True  # Ocean of PDF search links when Gutenberg has no file
 
     # GitHub — used to personalize digest suggestions based on your projects
     github_username: str | None = None
@@ -54,6 +56,8 @@ class Settings(BaseSettings):
     plaid_env: str = "sandbox"
     plaid_products: str = "transactions"
     plaid_country_codes: str = "US"
+    # Fernet key for encrypting Plaid access tokens at rest
+    plaid_token_encryption_key: str | None = None
 
     # Calendar — Google
     google_oauth_client_secrets: Path | None = None
@@ -63,6 +67,10 @@ class Settings(BaseSettings):
     # Health
     health_export_dir: Path | None = None
     usda_api_key: str | None = None
+
+    # Apple Books MCP (local macOS Books app, read-only)
+    apple_books_mcp_command: str = "uvx"
+    apple_books_mcp_args: str = "apple-books-mcp@latest"
 
     @property
     def obsidian_base_url(self) -> str:

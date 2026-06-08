@@ -81,6 +81,7 @@ Before adding any MCP server that touches sensitive data:
 |---|---|
 | `@modelcontextprotocol/server-filesystem` | Read/write your vault directly from Cursor |
 | `@modelcontextprotocol/server-fetch` | Web fetching for testing prompts |
+| `apple-books-mcp` | macOS Books library, highlights, reading progress — see `docs/mcp-apple-books.md` |
 | `mcp-obsidian` (community) | Vault via REST API |
 | Tavily official MCP | Search testing |
 | GitHub MCP | Issue/PR workflows |

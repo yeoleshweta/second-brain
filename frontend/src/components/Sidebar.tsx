@@ -1,173 +1,136 @@
-import { useCallback, useEffect, useState } from 'react'
-import { usePlaidLink } from 'react-plaid-link'
-import { Brain, Link2, Check, AlertCircle, MessageCircle, BookOpen, Menu, X } from 'lucide-react'
-import { getPlaidLinkToken, plaidExchange } from '@/lib/api'
+import { MessageCircle, BookOpen, Settings, CalendarDays } from 'lucide-react'
+import { AGENTS } from '@/agents'
+import { CharacterAvatarByAgentId } from '@/components/friends/CharacterAvatar'
+import { FriendsDoorHeader } from '@/components/friends/FriendsDecor'
+import { RecentChats } from '@/components/RecentChats'
+import type { AppView, ChatSessionSummary } from '@/types'
 
-type View = 'chat' | 'reading'
+type View = AppView
 
-interface SidebarProps {
+interface Props {
   activeView: View
-  onViewChange: (view: View) => void
+  onViewChange: (v: View) => void
+  sessions: ChatSessionSummary[]
+  activeSessionId: string | null
+  onSelectSession: (id: string) => void
+  onNewChat: () => void
 }
 
-export function Sidebar({ activeView, onViewChange }: SidebarProps) {
-  const [linkToken, setLinkToken] = useState<string | null>(null)
-  const [linkError, setLinkError] = useState<string | null>(null)
-  const [linkedItems, setLinkedItems] = useState<number>(0)
-  const [mobileOpen, setMobileOpen] = useState(false)
-
-  const fetchToken = useCallback(async () => {
-    try {
-      setLinkError(null)
-      const token = await getPlaidLinkToken()
-      setLinkToken(token)
-    } catch (err) {
-      setLinkError((err as Error).message)
-    }
-  }, [])
-
-  const onSuccess = useCallback(async (publicToken: string) => {
-    try {
-      await plaidExchange(publicToken)
-      setLinkedItems((n) => n + 1)
-      setLinkToken(null)
-    } catch (err) {
-      setLinkError((err as Error).message)
-    }
-  }, [])
-
-  const { open, ready } = usePlaidLink({ token: linkToken, onSuccess })
-
-  useEffect(() => {
-    if (linkToken && ready) open()
-  }, [linkToken, ready, open])
-
-  const navItems: { view: View; label: string; icon: React.ReactNode }[] = [
-    { view: 'chat', label: 'Chat', icon: <MessageCircle size={16} /> },
-    { view: 'reading', label: '📚 Reading List', icon: <BookOpen size={16} /> },
-  ]
-
-  const sidebarContent = (
-    <aside className="w-full md:w-64 bg-ink-800 border-r border-ink-700 flex flex-col h-full">
-      <div className="p-4 border-b border-ink-700 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Brain className="text-blue-400" size={22} />
-          <h1 className="font-semibold text-ink-100">Second Brain</h1>
-        </div>
-        <button
-          className="md:hidden text-ink-400 hover:text-ink-200"
-          onClick={() => setMobileOpen(false)}
-        >
-          <X size={20} />
-        </button>
-      </div>
-
-      <div className="p-4 flex-1 space-y-4 text-sm overflow-y-auto">
-        {/* Navigation */}
-        <div>
-          <div className="text-xs uppercase tracking-wider text-ink-400 mb-2">Views</div>
-          <ul className="space-y-1">
-            {navItems.map(({ view, label, icon }) => (
-              <li key={view}>
-                <button
-                  onClick={() => {
-                    onViewChange(view)
-                    setMobileOpen(false)
-                  }}
-                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition ${
-                    activeView === view
-                      ? 'bg-blue-600 text-white'
-                      : 'text-ink-200 hover:bg-ink-700'
-                  }`}
-                >
-                  {icon}
-                  {label}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {/* Agents */}
-        <div>
-          <div className="text-xs uppercase tracking-wider text-ink-400 mb-2">Agents</div>
-          <ul className="space-y-1 text-ink-200">
-            <li className="flex items-center justify-between px-3 py-1.5">
-              <span>🪄 Ross</span>
-              <span className="text-xs text-emerald-500">active</span>
-            </li>
-            <li className="flex items-center justify-between px-3 py-1.5">
-              <span>🥗 Health</span>
-              <span className="text-xs text-ink-500">stub</span>
-            </li>
-            <li className="flex items-center justify-between px-3 py-1.5">
-              <span>💰 Finance</span>
-              <span className="text-xs text-ink-500">stub</span>
-            </li>
-            <li className="flex items-center justify-between px-3 py-1.5">
-              <span>📅 Chandler</span>
-              <span className="text-xs text-emerald-500">active</span>
-            </li>
-          </ul>
-        </div>
-
-        {/* Connections */}
-        <div>
-          <div className="text-xs uppercase tracking-wider text-ink-400 mb-2">Connections</div>
-          <button
-            onClick={fetchToken}
-            className="w-full flex items-center gap-2 px-3 py-2 bg-ink-700 hover:bg-ink-600 rounded-md text-ink-100 transition min-h-[44px]"
-          >
-            <Link2 size={14} />
-            Link bank account
-            {linkedItems > 0 && (
-              <span className="ml-auto text-xs bg-emerald-700 text-emerald-100 px-1.5 py-0.5 rounded">
-                {linkedItems}
-              </span>
-            )}
-          </button>
-          {linkedItems > 0 && (
-            <div className="mt-2 flex items-center gap-1.5 text-xs text-emerald-400">
-              <Check size={12} />
-              {linkedItems} item{linkedItems > 1 ? 's' : ''} linked
-            </div>
-          )}
-          {linkError && (
-            <div className="mt-2 flex items-start gap-1.5 text-xs text-rose-400">
-              <AlertCircle size={12} className="mt-0.5 shrink-0" />
-              <span className="break-all">{linkError}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="p-4 border-t border-ink-700 text-xs text-ink-500">Local only · v0.1</div>
-    </aside>
-  )
+export function Sidebar({
+  activeView,
+  onViewChange,
+  sessions,
+  activeSessionId,
+  onSelectSession,
+  onNewChat,
+}: Props) {
+  const liveAgents = AGENTS.filter((a) => a.live)
+  const futureAgents = AGENTS.filter((a) => !a.live)
 
   return (
-    <>
-      {/* Mobile hamburger */}
-      <button
-        className="md:hidden fixed top-3 left-3 z-40 bg-ink-800 border border-ink-700 rounded-lg p-2 text-ink-300 min-h-[44px] min-w-[44px] flex items-center justify-center"
-        onClick={() => setMobileOpen(true)}
-      >
-        <Menu size={20} />
-      </button>
+    <aside className="hidden md:flex flex-col w-72 shrink-0 bg-white/95 border-r border-friends-frame/60 h-full overflow-y-auto backdrop-blur-sm">
 
-      {/* Desktop sidebar */}
-      <div className="hidden md:flex w-64 shrink-0">{sidebarContent}</div>
+      <div className="px-4 pt-5 pb-4 border-b border-paper-200 shrink-0">
+        <FriendsDoorHeader onLogoClick={onNewChat} />
+        <p className="text-[10px] text-paper-400 mt-3 text-center lowercase tracking-wide">
+          centralperk · 6 friends on the couch
+        </p>
+      </div>
 
-      {/* Mobile slide-over */}
-      {mobileOpen && (
-        <div className="md:hidden fixed inset-0 z-50 flex">
-          <div className="w-72 max-w-[85vw] flex flex-col">{sidebarContent}</div>
-          <div
-            className="flex-1 bg-black/50"
-            onClick={() => setMobileOpen(false)}
+      <nav className="px-3 pt-3 pb-2 space-y-1 border-b border-paper-200 shrink-0">
+        {(
+          [
+            { id: 'chat' as View, icon: <MessageCircle size={16} />, label: 'Central Perk Chat' },
+            { id: 'reading' as View, icon: <BookOpen size={16} />, label: 'Reading List' },
+            { id: 'agenda' as View, icon: <CalendarDays size={16} />, label: 'Chandler Agenda' },
+            { id: 'settings' as View, icon: <Settings size={16} />, label: 'Settings' },
+          ] as const
+        ).map(({ id, icon, label }) => (
+          <button
+            key={id}
+            onClick={() => onViewChange(id)}
+            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl transition text-left ${
+              activeView === id
+                ? 'bg-friends-frame/30 text-friends-purple-dark'
+                : 'text-paper-500 hover:bg-paper-50 hover:text-paper-700'
+            }`}
+          >
+            <span className={activeView === id ? 'text-friends-sofa' : 'text-paper-400'}>{icon}</span>
+            <span className="text-sm font-medium">{label}</span>
+            {activeView === id && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-friends-sofa" />}
+          </button>
+        ))}
+      </nav>
+
+      {activeView === 'chat' && (
+        <div className="px-3 py-3 border-b border-paper-200 shrink-0">
+          <RecentChats
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            onSelectSession={(id) => {
+              onSelectSession(id)
+              onViewChange('chat')
+            }}
+            onNewChat={onNewChat}
           />
         </div>
       )}
-    </>
+
+      <div className="flex-1 px-3 py-3 space-y-4 overflow-y-auto">
+        <div>
+          <p className="text-[10px] font-bold text-friends-purple uppercase tracking-widest px-1 mb-2">
+            On the orange couch
+          </p>
+          <div className="space-y-2">
+            {liveAgents.map((agent) => (
+              <div
+                key={agent.id}
+                className="bg-friends-cream rounded-xl border-2 border-friends-frame/80 shadow-card p-3"
+              >
+                <div className="flex items-start gap-2.5">
+                  <CharacterAvatarByAgentId agentId={agent.id} size="md" framed />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="text-sm font-bold text-paper-800">{agent.name}</span>
+                      <span className="text-[9px] font-bold text-friends-awning bg-white px-1.5 py-0.5 rounded-full">
+                        LIVE
+                      </span>
+                    </div>
+                    <p className="text-[10px] font-semibold text-paper-500 mb-0.5">{agent.specialty}</p>
+                    <p className="text-[10px] text-friends-purple italic leading-snug line-clamp-2">
+                      &ldquo;{agent.catchphrase}&rdquo;
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[10px] font-bold text-paper-400 uppercase tracking-widest px-1 mb-2">
+            Not at the Perk yet
+          </p>
+          <div className="space-y-2">
+            {futureAgents.map((agent) => (
+              <div key={agent.id} className="bg-paper-50 rounded-xl border border-paper-100 p-3 opacity-65">
+                <div className="flex items-center gap-2.5">
+                  <CharacterAvatarByAgentId agentId={agent.id} size="sm" framed={false} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-paper-700">{agent.name}</span>
+                      <span className="text-[9px] font-bold text-paper-400 bg-paper-200 px-1.5 py-0.5 rounded-full">
+                        Phase {agent.phase}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-paper-400 mt-0.5">{agent.specialty}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </aside>
   )
 }

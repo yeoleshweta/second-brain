@@ -65,7 +65,9 @@ http://<your-mac-name>:5173
 
 For example: `http://shwetas-macbook-pro:5173`
 
-Your full Second Brain app should load. The frontend automatically points its API calls to `<mac-name>:8000`.
+Your full Second Brain app should load. The frontend sends API calls to the **same origin** (`http://<mac>:5173/api/...`) and Vite proxies them to the backend on localhost — you do **not** need port 8000 open on the phone.
+
+Optional: set `VITE_API_URL=http://<tailscale-ip>:8000` in `frontend/.env` if you prefer hitting the backend directly (enable `APP_HOST=0.0.0.0` in backend `.env`).
 
 ---
 
@@ -119,4 +121,4 @@ This exposes port 5173 publicly via a `*.ts.net` URL. **Use with caution** — t
 - All traffic between devices is encrypted by Tailscale (WireGuard under the hood)
 - The backend requires `Authorization: Bearer <APP_API_TOKEN>` on every request
 - Nothing is exposed to the public internet unless you explicitly enable Funnel
-- If you travel and want access without your Mac running, the app is unavailable — it's local-only by design
+- If you travel and want access **without your Mac running**, the app is unavailable in the current architecture — see `docs/second-brain-roadmap.md` for always-on Mac, Funnel, and future cloud options.

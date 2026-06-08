@@ -17,6 +17,7 @@ def add(
     source: str | None = None,
     kind: ItemKind = ItemKind.URL,
     tags: str = "",
+    content_path: str | None = None,
 ) -> ReadingListItem | None:
     """Insert a new item. Returns None if a URL already exists (dedup)."""
     if url:
@@ -33,6 +34,7 @@ def add(
         source=source,
         kind=kind,
         tags=tags,
+        content_path=content_path,
     )
     session.add(item)
     session.commit()
@@ -77,6 +79,44 @@ def find_by_title(session: Session, query: str) -> ReadingListItem | None:
     return results[0] if results else None
 
 
+def search_by_title(
+    session: Session,
+    query: str,
+    *,
+    statuses: tuple[ItemStatus, ...] | None = None,
+    limit: int = 10,
+) -> list[ReadingListItem]:
+    q = f"%{query.lower()}%"
+    stmt = select(ReadingListItem).where(ReadingListItem.title.ilike(q))  # type: ignore[attr-defined]
+    if statuses:
+        stmt = stmt.where(ReadingListItem.status.in_(list(statuses)))  # type: ignore[attr-defined]
+    stmt = stmt.order_by(ReadingListItem.saved_at.desc()).limit(limit)  # type: ignore[attr-defined]
+    return list(session.exec(stmt).all())
+
+
+def list_by_tag(session: Session, tag: str, *, only_active: bool = True) -> list[ReadingListItem]:
+    tag_norm = tag.strip().lower()
+    items = list_active(session) if only_active else list_all(session)
+    return [
+        i
+        for i in items
+        if tag_norm in {t.strip().lower() for t in (i.tags or "").split(",") if t.strip()}
+    ]
+
+
+def list_finished_since(session: Session, since: datetime) -> list[ReadingListItem]:
+    return list(
+        session.exec(
+            select(ReadingListItem)
+            .where(
+                ReadingListItem.status == ItemStatus.READ,  # type: ignore[attr-defined]
+                ReadingListItem.finished_at >= since,  # type: ignore[attr-defined]
+            )
+            .order_by(ReadingListItem.finished_at.desc())  # type: ignore[attr-defined]
+        ).all()
+    )
+
+
 def mark_read(session: Session, item: ReadingListItem) -> ReadingListItem:
     item.status = ItemStatus.READ
     item.finished_at = datetime.now()
@@ -104,8 +144,13 @@ def update_progress(session: Session, item: ReadingListItem, pct: int) -> Readin
 
 
 def delete(session: Session, item: ReadingListItem) -> None:
+    from src.services.reading_content import delete_item_content
+
+    item_id = item.id
     session.delete(item)
     session.commit()
+    if item_id is not None:
+        delete_item_content(item_id)
 
 
 def stats(session: Session) -> dict:

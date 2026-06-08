@@ -1,0 +1,90 @@
+# Ross knowledge feed sources — tagged for per-topic filtering and brief balancing.
+# Edit freely; restart backend to pick up changes (cached at first load).
+
+feeds:
+  # ── AI ──────────────────────────────────────────────────────────────────────
+  - url: https://www.anthropic.com/news/rss.xml
+    name: Anthropic
+    tags: [ai]
+  - url: https://openai.com/blog/rss.xml
+    name: OpenAI
+    tags: [ai]
+  - url: https://huggingface.co/blog/feed.xml
+    name: Hugging Face
+    tags: [ai, engineering]
+  - url: https://simonwillison.net/atom/everything/
+    name: Simon Willison
+    tags: [ai, engineering]
+  - url: https://sebastianraschka.com/rss/
+    name: Sebastian Raschka
+    tags: [ai]
+  - url: https://lilianweng.github.io/index.xml
+    name: Lil'Log
+    tags: [ai]
+  - url: https://www.latent.space/feed
+    name: Latent Space
+    tags: [ai]
+  - url: https://importai.substack.com/feed
+    name: Import AI
+    tags: [ai, science]
+
+  # ── Engineering ─────────────────────────────────────────────────────────────
+  - url: https://martinfowler.com/feed.atom
+    name: Martin Fowler
+    tags: [engineering]
+  - url: https://hnrss.org/frontpage
+    name: Hacker News
+    tags: [engineering, ai, business]
+  - url: https://lobste.rs/rss
+    name: Lobsters
+    tags: [engineering]
+  - url: https://queue.acm.org/rss/feeds/queuecontent.xml
+    name: ACM Queue
+    tags: [engineering]
+
+  # ── Science ─────────────────────────────────────────────────────────────────
+  - url: https://www.quantamagazine.org/feed/
+    name: Quanta
+    tags: [science]
+  - url: https://phys.org/rss-feed/
+    name: Phys.org
+    tags: [science]
+  - url: https://www.sciencedaily.com/rss/top.xml
+    name: Science Daily
+    tags: [science]
+
+  # ── Business ────────────────────────────────────────────────────────────────
+  - url: https://stratechery.com/feed/
+    name: Stratechery
+    tags: [business, engineering]
+  - url: https://a16z.com/feed/
+    name: a16z
+    tags: [business, ai]
+  - url: https://www.notboring.co/feed
+    name: Not Boring
+    tags: [business]
+  - url: https://www.lennysnewsletter.com/feed
+    name: Lenny's Newsletter
+    tags: [business, design]
+
+  # ── Design ──────────────────────────────────────────────────────────────────
+  - url: https://www.smashingmagazine.com/feed/
+    name: Smashing Magazine
+    tags: [design, engineering]
+  - url: https://www.nngroup.com/feed/rss/
+    name: Nielsen Norman Group
+    tags: [design]
+  - url: https://alistapart.com/main/feed/
+    name: A List Apart
+    tags: [design, engineering]
+
+  # ── Psychology / ideas ──────────────────────────────────────────────────────
+  - url: https://www.astralcodexten.com/feed
+    name: Astral Codex Ten
+    tags: [psychology, science, ai]
+  - url: https://aeon.co/feed.rss
+    name: Aeon
+    tags: [psychology, culture, science]
+  - url: https://www.bps.org.uk/psychologist/feed
+    name: BPS Research Digest
+    tags: [psychology, science]

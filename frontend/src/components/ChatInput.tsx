@@ -1,10 +1,10 @@
-import { useRef, useState, type KeyboardEvent } from 'react'
-import { Paperclip, Send, X } from 'lucide-react'
-import { uploadFile } from '@/lib/api'
+import { useRef, useState } from 'react'
+import { Send, X, Paperclip } from 'lucide-react'
 import type { Attachment } from '@/types'
+import { uploadFile } from '@/lib/api'
 
 interface Props {
-  onSend: (message: string, attachments: Attachment[]) => void
+  onSend: (text: string, attachments: Attachment[]) => void
   disabled?: boolean
 }
 
@@ -12,105 +12,129 @@ export function ChatInput({ onSend, disabled }: Props) {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [uploading, setUploading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
-  function submit() {
-    if (disabled || uploading) return
-    if (!text.trim() && attachments.length === 0) return
-    onSend(text.trim() || '(attachment)', attachments)
+  const canSend = (text.trim().length > 0 || attachments.length > 0) && !disabled && !uploading
+
+  function autoResize() {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px'
+  }
+
+  function handleSubmit() {
+    if (!canSend) return
+    onSend(text.trim(), attachments)
     setText('')
     setAttachments([])
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (el) {
+        el.style.height = 'auto'
+      }
+    })
   }
 
-  function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+  function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      submit()
+      handleSubmit()
     }
   }
 
-  async function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files
-    if (!files) return
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    if (files.length === 0) return
     setUploading(true)
     try {
-      const uploaded: Attachment[] = []
-      for (const file of Array.from(files)) {
-        const a = await uploadFile(file)
-        uploaded.push(a)
+      for (const file of files) {
+        const att = await uploadFile(file)
+        setAttachments((prev) => [...prev, att])
       }
-      setAttachments((prev) => [...prev, ...uploaded])
-    } catch (err) {
-      alert(`Upload failed: ${(err as Error).message}`)
+    } catch {
+      alert('Upload failed — check your connection and try again.')
     } finally {
       setUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
+      if (fileRef.current) fileRef.current.value = ''
     }
-  }
-
-  function removeAttachment(fileId: string) {
-    setAttachments((prev) => prev.filter((a) => a.fileId !== fileId))
   }
 
   return (
-    <div className="border-t border-ink-700 bg-ink-800/50 backdrop-blur">
+    <div className="bg-white rounded-2xl border-2 border-friends-frame/70 shadow-card-lg overflow-hidden">
       {attachments.length > 0 && (
-        <div className="px-4 pt-3 flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 px-3 pt-3">
           {attachments.map((a) => (
             <div
               key={a.fileId}
-              className="flex items-center gap-2 bg-ink-700 rounded-md px-2.5 py-1.5 text-sm"
+              className="flex items-center gap-2 bg-paper-100 border border-paper-200 rounded-xl px-3 py-2 text-sm text-paper-600"
             >
-              <span className="text-ink-200">{a.name}</span>
+              <span className="max-w-[140px] truncate">{a.name}</span>
               <button
-                onClick={() => removeAttachment(a.fileId)}
-                className="text-ink-400 hover:text-ink-100"
+                type="button"
+                onClick={() => setAttachments((prev) => prev.filter((x) => x.fileId !== a.fileId))}
+                className="touch-target flex items-center justify-center text-paper-400 active:text-rust-400 -mr-1"
+                aria-label="Remove attachment"
               >
-                <X size={14} />
+                <X size={16} />
               </button>
             </div>
           ))}
         </div>
       )}
 
-      <div className="p-4 flex items-end gap-2">
-        <input
-          ref={fileInputRef}
-          type="file"
-          className="hidden"
-          accept="image/*,application/pdf"
-          multiple
-          onChange={onFileChange}
-        />
+      <div className="flex items-end gap-1.5 px-2 py-2 sm:px-3 sm:py-2.5">
         <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled || uploading}
-          className="p-2.5 rounded-lg bg-ink-700 hover:bg-ink-600 text-ink-200 disabled:opacity-50"
-          title="Attach file"
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading || disabled}
+          className="touch-target shrink-0 flex items-center justify-center rounded-xl text-paper-500 active:bg-paper-100 active:text-friends-purple transition self-end"
+          aria-label="Attach file"
         >
-          <Paperclip size={18} />
+          <Paperclip size={22} />
         </button>
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={handleFileChange}
+        />
 
         <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={
-            uploading ? 'Uploading…' : 'Tell your brain anything (Shift+Enter for newline)'
-          }
+          ref={textareaRef}
           rows={1}
-          disabled={disabled || uploading}
-          className="flex-1 resize-none bg-ink-900 border border-ink-700 rounded-lg px-3 py-2.5 text-ink-100 placeholder-ink-400 focus:outline-none focus:border-blue-500"
-          style={{ maxHeight: '160px' }}
+          value={text}
+          placeholder={disabled ? 'Ross is thinking…' : 'Message at centralperk…'}
+          disabled={disabled}
+          enterKeyHint="send"
+          autoComplete="off"
+          autoCorrect="on"
+          className="input-ios flex-1 resize-none bg-transparent text-base text-paper-800 placeholder:text-paper-400 outline-none leading-relaxed py-2.5 min-h-[44px] max-h-[120px]"
+          onChange={(e) => {
+            setText(e.target.value)
+            autoResize()
+          }}
+          onKeyDown={handleKeyDown}
         />
 
         <button
-          onClick={submit}
-          disabled={disabled || uploading || (!text.trim() && attachments.length === 0)}
-          className="p-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
-          title="Send"
+          type="button"
+          onClick={handleSubmit}
+          disabled={!canSend}
+          aria-label="Send message"
+          className={`touch-target shrink-0 rounded-xl flex items-center justify-center transition self-end active:scale-95 ${
+            canSend
+              ? 'bg-friends-sofa text-white shadow-card active:bg-friends-sofa-dark'
+              : 'bg-paper-100 text-paper-300 cursor-not-allowed'
+          }`}
         >
-          <Send size={18} />
+          {uploading ? (
+            <span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+          ) : (
+            <Send size={20} className={canSend ? 'text-white' : 'text-paper-300'} />
+          )}
         </button>
       </div>
     </div>

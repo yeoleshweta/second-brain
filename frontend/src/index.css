@@ -2,34 +2,199 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Global base ──────────────────────────────────────────────────────────── */
 @layer base {
   html, body, #root {
     height: 100%;
+    overflow: hidden;      /* prevents body scroll; inner divs scroll */
   }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    height: -webkit-fill-available;
+  }
+
   body {
-    margin: 0;
+    @apply bg-friends-cream text-paper-800;
+    overscroll-behavior: none;
+    min-height: 100dvh;
+    min-height: -webkit-fill-available;
   }
 }
 
-/* Markdown content styling */
-.prose-chat {
-  @apply text-ink-100 leading-relaxed;
+/* ── iPhone / mobile utilities ─────────────────────────────────────────────── */
+@layer utilities {
+  .pt-safe {
+    padding-top: max(0.5rem, env(safe-area-inset-top));
+  }
+
+  .pb-safe {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+
+  .mobile-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
+  /* 16px+ inputs prevent iOS Safari zoom-on-focus */
+  .input-ios {
+    font-size: 16px;
+  }
+
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
-.prose-chat code {
-  @apply bg-ink-700 text-ink-100 px-1 py-0.5 rounded text-sm;
+
+@keyframes friendsWiggle {
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(3deg); }
 }
-.prose-chat pre {
-  @apply bg-ink-800 p-3 rounded-lg overflow-x-auto my-2;
+
+@keyframes sofaGlow {
+  0%, 100% { box-shadow: 0 2px 12px rgba(232, 117, 26, 0.15); }
+  50% { box-shadow: 0 4px 20px rgba(232, 117, 26, 0.25); }
 }
-.prose-chat a {
-  @apply text-blue-400 hover:underline;
+
+@keyframes couchFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
 }
-.prose-chat ul {
-  @apply list-disc pl-5 my-2;
+
+@keyframes cushionPulse {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.96); }
 }
-.prose-chat ol {
-  @apply list-decimal pl-5 my-2;
+
+.centralperk-couch {
+  animation: couchFloat 4.5s ease-in-out infinite;
+  filter: drop-shadow(0 6px 12px rgba(74, 40, 112, 0.2));
 }
-.prose-chat p {
-  @apply my-2;
+
+.centralperk-couch .couch-cushion-left {
+  transform-origin: center;
+  animation: cushionPulse 4.5s ease-in-out infinite;
+}
+
+.centralperk-couch .couch-cushion-right {
+  transform-origin: center;
+  animation: cushionPulse 4.5s ease-in-out 0.7s infinite;
+}
+
+.centralperk-couch .couch-shadow {
+  animation: cushionPulse 4.5s ease-in-out infinite;
+}
+
+/* ── Scrollbar polish ─────────────────────────────────────────────────────── */
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+}
+
+/* ── Dot bounce animation (named dotBounce to avoid Tailwind conflict) ──── */
+@keyframes dotBounce {
+  0%, 80%, 100% { transform: translateY(0);    opacity: 0.4; }
+  40%            { transform: translateY(-5px); opacity: 1;   }
+}
+
+/* ── prose-chat: markdown rendered inside AI message bubbles ─────────────── */
+@layer components {
+  .prose-chat {
+    @apply text-paper-800 leading-relaxed;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* paragraphs */
+  .prose-chat p {
+    @apply mb-2 last:mb-0;
+    overflow-wrap: anywhere;
+  }
+
+  /* bold */
+  .prose-chat strong {
+    @apply font-semibold text-paper-900;
+  }
+
+  /* italic */
+  .prose-chat em {
+    @apply italic text-paper-700;
+  }
+
+  /* inline code */
+  .prose-chat code {
+    @apply font-mono text-[11px] bg-paper-100 text-accent-500 px-1.5 py-0.5 rounded;
+  }
+
+  /* code block */
+  .prose-chat pre {
+    @apply bg-paper-900 text-paper-100 rounded-xl p-3.5 my-3 overflow-x-auto text-[11px] font-mono leading-relaxed;
+  }
+  .prose-chat pre code {
+    @apply bg-transparent text-paper-100 p-0;
+  }
+
+  /* links */
+  .prose-chat a {
+    @apply text-friends-purple underline underline-offset-2 decoration-friends-purple/40 hover:text-friends-purple-dark transition;
+  }
+
+  /* unordered list */
+  .prose-chat ul {
+    @apply list-none space-y-1 my-2 pl-0;
+  }
+  .prose-chat ul li::before {
+    content: "☕";
+    @apply mr-1.5 text-sm;
+  }
+  .prose-chat ul li {
+    @apply flex;
+  }
+
+  /* ordered list */
+  .prose-chat ol {
+    @apply list-decimal list-inside space-y-1 my-2 pl-2;
+  }
+  .prose-chat ol li {
+    @apply text-paper-800;
+  }
+  .prose-chat ol li::marker {
+    @apply text-accent-400 font-semibold;
+  }
+
+  /* headings */
+  .prose-chat h1, .prose-chat h2 {
+    @apply font-serif font-semibold text-paper-900 mt-3 mb-1.5 leading-snug;
+  }
+  .prose-chat h1 { @apply text-base; }
+  .prose-chat h2 { @apply text-sm; }
+  .prose-chat h3 { @apply text-xs font-semibold text-paper-700 uppercase tracking-widest mt-2 mb-1; }
+
+  /* blockquote */
+  .prose-chat blockquote {
+    @apply border-l-2 border-accent-300 pl-3 my-2 italic text-paper-500;
+  }
+
+  /* horizontal rule */
+  .prose-chat hr {
+    @apply border-paper-200 my-4;
+  }
+
+  /* table */
+  .prose-chat table {
+    @apply w-full text-xs my-3 border-collapse;
+  }
+  .prose-chat th {
+    @apply text-left font-semibold text-paper-700 border-b border-paper-200 pb-1.5 pr-3;
+  }
+  .prose-chat td {
+    @apply text-paper-600 border-b border-paper-100 py-1.5 pr-3;
+  }
 }

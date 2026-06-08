@@ -12,9 +12,11 @@ from src.integrations.obsidian import ObsidianClient
 async def build_combined_brief() -> str:
     """Build and write the unified morning brief. Returns the vault path."""
     from src.agents import calendar_agent, knowledge
+    from src.integrations.google_gmail import gmail_morning_section
 
-    chandler_md, ross_md = await __import__("asyncio").gather(
+    chandler_md, gmail_md, ross_md = await __import__("asyncio").gather(
         calendar_agent.morning_section(),
+        gmail_morning_section(),
         knowledge.morning_section(),
     )
 
@@ -26,6 +28,7 @@ async def build_combined_brief() -> str:
         f"# Morning Brief — {today}\n\n"
         f"*Compiled at {now.strftime('%H:%M')}*\n\n"
         f"{chandler_md}\n"
+        f"{gmail_md}\n"
         f"{ross_md}\n"
     )
 
