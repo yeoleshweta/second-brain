@@ -32,10 +32,11 @@ def _get_engine():
     global _engine
     if _engine is None:
         settings = get_settings()
-        _engine = create_engine(
-            settings.database_url,
-            connect_args={"check_same_thread": False},
-        )
+        db_url = settings.database_url
+        # SQLite needs check_same_thread=False; PostgreSQL does not (and rejects it)
+        is_sqlite = db_url.startswith("sqlite")
+        connect_args = {"check_same_thread": False} if is_sqlite else {}
+        _engine = create_engine(db_url, connect_args=connect_args)
     return _engine
 
 
@@ -56,8 +57,12 @@ def init_db() -> None:
 
 
 def _migrate_schema(engine) -> None:
-    """Lightweight SQLite migrations for existing local databases."""
+    """Lightweight migrations for existing local SQLite databases. No-op on PostgreSQL."""
     from sqlalchemy import text
+
+    db_url = str(engine.url)
+    if not db_url.startswith("sqlite"):
+        return  # PostgreSQL uses SQLModel.metadata.create_all — no manual migrations needed
 
     with engine.connect() as conn:
         rows = conn.execute(text("PRAGMA table_info(reading_list_items)")).fetchall()

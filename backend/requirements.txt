@@ -49,3 +49,6 @@ loguru>=0.7.0
 apscheduler>=3.10.0
 cryptography>=43.0.0
 pillow>=11.0.0
+
+# PostgreSQL driver (Supabase / Render) — ignored when using SQLite locally
+psycopg2-binary>=2.9.0

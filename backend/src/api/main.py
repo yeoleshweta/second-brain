@@ -84,13 +84,16 @@ _EXTRA_ORIGINS = [o.strip() for o in settings.frontend_origin.split(",") if o.st
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "capacitor://localhost",      # iOS Capacitor native
-        "ionic://localhost",           # Android Capacitor alternative
-        "http://localhost",            # Android emulator / Capacitor Android
+        "capacitor://localhost",   # iOS Capacitor native
+        "ionic://localhost",       # Android Capacitor
+        "http://localhost",        # Android emulator
         *_EXTRA_ORIGINS,
     ],
     allow_origin_regex=(
-        r"http://(localhost|127\.0\.0\.1|[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*)(:\d+)?"
+        # localhost dev + Tailscale + Vercel preview/prod URLs
+        r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
+        r"|https://[a-zA-Z0-9-]+(\.vercel\.app)"
+        r"|https://[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*"  # any configured custom domain
     ),
     allow_credentials=True,
     allow_methods=["*"],
@@ -919,13 +922,17 @@ async def finance_summary(
 
 
 def main() -> None:
+    import os
+
     import uvicorn
 
-    logger.info("Starting Second Brain API on http://{}:{}", settings.app_host, settings.app_port)
+    # Render (and most cloud hosts) injects PORT at runtime. Fall back to settings.
+    port = int(os.environ.get("PORT", settings.app_port))
+    logger.info("Starting Second Brain API on http://{}:{}", settings.app_host, port)
     uvicorn.run(
         "src.api.main:app",
         host=settings.app_host,
-        port=settings.app_port,
+        port=port,
         reload=settings.environment == "development",
         reload_dirs=["src"],
     )

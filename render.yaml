@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: second-brain-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn src.api.main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PYTHONPATH
+        value: /opt/render/project/src/backend
+      - key: OBSIDIAN_VAULT_PATH
+        value: /tmp/vault
+      - key: DATA_DIR
+        value: /tmp/data
+      - key: DATABASE_URL
+        sync: false   # set manually in Render dashboard from Supabase
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: APP_API_TOKEN
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false   # set to your Vercel URL after deploy
