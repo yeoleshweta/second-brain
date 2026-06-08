@@ -892,7 +892,7 @@ async def sync_apple_books(
 
     _status_map = {
         "reading":  ItemStatus.IN_PROGRESS,
-        "finished": ItemStatus.DONE,
+        "finished": ItemStatus.READ,
         "unread":   ItemStatus.UNREAD,
     }
 
@@ -952,7 +952,7 @@ async def reading_stats(session: Annotated[Session, Depends(get_session)]) -> di
     ).all()
 
     currently_reading = [b for b in all_books if b.status == ItemStatus.IN_PROGRESS]
-    finished          = [b for b in all_books if b.status == ItemStatus.DONE]
+    finished          = [b for b in all_books if b.status == ItemStatus.READ]
     unread            = [b for b in all_books if b.status == ItemStatus.UNREAD]
 
     genres: dict[str, int] = {}

@@ -2863,7 +2863,7 @@ async def handle_apple_books_from_db(msg: str, session: Session) -> dict:
         }
 
     currently_reading = [b for b in books if b.status == ItemStatus.IN_PROGRESS]
-    finished          = [b for b in books if b.status == ItemStatus.DONE]
+    finished          = [b for b in books if b.status == ItemStatus.READ]
     unread            = [b for b in books if b.status == ItemStatus.UNREAD]
 
     genres: dict[str, int] = {}
