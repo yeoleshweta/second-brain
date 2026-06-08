@@ -13,6 +13,7 @@ def start_scheduler() -> None:
         return
 
     from src.jobs.combined_brief import build_combined_brief
+    from src.jobs.finance_review import write_weekly_finance_review
     from src.jobs.reachout import append_reachout_to_brief
     from src.jobs.ross_nudges import (
         send_discovery_suggestions,
@@ -53,6 +54,17 @@ def start_scheduler() -> None:
         hour=9,
         minute=0,
         id="reachout",
+        replace_existing=True,
+    )
+
+    # Sunday at 18:00 — weekly finance review (Plaid sync + Obsidian note)
+    scheduler.add_job(
+        write_weekly_finance_review,
+        trigger="cron",
+        day_of_week="sun",
+        hour=18,
+        minute=30,
+        id="finance_weekly_review",
         replace_existing=True,
     )
 
@@ -109,7 +121,9 @@ def start_scheduler() -> None:
 
     scheduler.start()
     _scheduler = scheduler
-    logger.info("Scheduler started — combined brief, reachout, and Ross proactive jobs enabled")
+    logger.info(
+        "Scheduler started — combined brief, reachout, finance review, Ross proactive jobs enabled"
+    )
 
 
 def stop_scheduler() -> None:

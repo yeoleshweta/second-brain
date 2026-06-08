@@ -7,16 +7,27 @@ const NEW_CHAT_SENTINEL = '__new__'
 const API_TOKEN = import.meta.env.VITE_API_TOKEN || 'change-me-to-a-long-random-string'
 
 function resolveApiBase(): string {
+  // 1. Explicit env var always wins (set for cloud/Railway builds).
   const configured = import.meta.env.VITE_API_URL
   if (configured) return configured.replace(/\/$/, '')
 
-  // For localhost development, direct backend avoids proxy SSE quirks.
-  // For phone/Tailscale access, prefer same-origin `/api` via Vite proxy to avoid CORS issues.
-  const host = window.location.hostname
-  const isLocalHost = host === 'localhost' || host === '127.0.0.1'
-  if (isLocalHost) {
-    return `${window.location.protocol}//${host}:8000`
+  // 2. Capacitor native app: window.location is capacitor://localhost — no Vite proxy.
+  //    We need a real URL. In dev: VITE_API_URL should point at Tailscale / Railway URL.
+  //    In production Capacitor build this must be set.
+  const scheme = window.location.protocol
+  if (scheme === 'capacitor:' || scheme === 'ionic:') {
+    // Fallback so the app at least fails gracefully with a clear error
+    console.warn('[api] Running in Capacitor without VITE_API_URL set. Set it in .env before building.')
+    return 'http://localhost:8000'
   }
+
+  // 3. Localhost dev: talk directly to backend to avoid SSE proxy quirks.
+  const host = window.location.hostname
+  if (host === 'localhost' || host === '127.0.0.1') {
+    return `${scheme}//${host}:8000`
+  }
+
+  // 4. Tailscale / LAN access: use same-origin proxy (/api → backend).
   return ''
 }
 
@@ -460,5 +471,76 @@ export async function fetchChandlerAgenda(scope: 'today' | 'week' = 'today'): Pr
     headers: authHeaders(),
   })
   if (!resp.ok) throw new Error(`Agenda failed: ${resp.status}`)
+  return resp.json()
+}
+
+// ── Finance ────────────────────────────────────────────────────────────────
+
+export interface Transaction {
+  id: number
+  plaid_transaction_id: string
+  date: string
+  merchant: string | null
+  category: string | null
+  amount: number
+  pending: boolean
+}
+
+export interface CategorySpend {
+  category: string
+  total: number
+  count: number
+}
+
+export interface Subscription {
+  merchant: string
+  avg_amount: number
+  occurrences: number
+  last_charged: string | null
+}
+
+export interface FinanceSummary {
+  period: string
+  total: number
+  categories: CategorySpend[]
+  subscriptions: Subscription[]
+}
+
+export interface TransactionsResponse {
+  period: string
+  count: number
+  transactions: Transaction[]
+}
+
+export async function getFinanceSummary(period = 'month'): Promise<FinanceSummary> {
+  const resp = await fetch(`${API_BASE}/api/finance/summary?period=${period}`, {
+    headers: authHeaders(),
+  })
+  if (!resp.ok) throw new Error(`Finance summary failed: ${resp.status}`)
+  return resp.json()
+}
+
+export async function getFinanceTransactions(
+  period = 'month',
+  limit = 50,
+  merchant?: string,
+  category?: string,
+): Promise<TransactionsResponse> {
+  const params = new URLSearchParams({ period, limit: String(limit) })
+  if (merchant) params.set('merchant', merchant)
+  if (category) params.set('category', category)
+  const resp = await fetch(`${API_BASE}/api/finance/transactions?${params}`, {
+    headers: authHeaders(),
+  })
+  if (!resp.ok) throw new Error(`Transactions failed: ${resp.status}`)
+  return resp.json()
+}
+
+export async function triggerFinanceSync(): Promise<{ results: { status: string; institution?: string; added?: number; modified?: number; removed?: number; error?: string }[] }> {
+  const resp = await fetch(`${API_BASE}/api/finance/sync`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  if (!resp.ok) throw new Error(`Finance sync failed: ${resp.status}`)
   return resp.json()
 }

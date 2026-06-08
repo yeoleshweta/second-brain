@@ -75,10 +75,23 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="Second Brain API", lifespan=lifespan)
 
-# CORS: allow localhost, 127.0.0.1, and any Tailscale MagicDNS hostname on port 5173.
+# CORS: allow:
+#   • localhost dev (Vite)
+#   • Tailscale MagicDNS hostnames on port 5173
+#   • Capacitor native apps (capacitor://localhost, ionic://localhost)
+#   • Any configured FRONTEND_ORIGIN (for Railway / cloud deploys)
+_EXTRA_ORIGINS = [o.strip() for o in settings.frontend_origin.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1|[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*):5173",
+    allow_origins=[
+        "capacitor://localhost",      # iOS Capacitor native
+        "ionic://localhost",           # Android Capacitor alternative
+        "http://localhost",            # Android emulator / Capacitor Android
+        *_EXTRA_ORIGINS,
+    ],
+    allow_origin_regex=(
+        r"http://(localhost|127\.0\.0\.1|[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*)(:\d+)?"
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -841,6 +854,68 @@ async def plaid_unlink_item(
 
     pi.delete_item(session, item_id)
     return {"ok": True}
+
+
+# ── Finance endpoints ───────────────────────────────────────────────────────────
+
+
+@app.post("/api/finance/sync", dependencies=[Depends(require_token)])
+async def finance_sync(session: Annotated[Session, Depends(get_session)]) -> dict:
+    """Trigger a Plaid transaction sync for all linked items."""
+    from src.services.plaid_sync import sync_all_items
+
+    if not _plaid_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Plaid not configured — set PLAID_CLIENT_ID and PLAID_SECRET",
+        )
+    results = await sync_all_items(session)
+    return {"results": results}
+
+
+@app.get("/api/finance/transactions", dependencies=[Depends(require_token)])
+async def finance_transactions(
+    session: Annotated[Session, Depends(get_session)],
+    period: str = "month",
+    limit: int = 50,
+    merchant: str | None = None,
+    category: str | None = None,
+) -> dict:
+    """List recent transactions with optional filters."""
+    from src.services.transaction_queries import date_range_for_period, recent_transactions
+
+    start, end = date_range_for_period(period)
+    txs = recent_transactions(
+        session,
+        start=start,
+        end=end,
+        limit=limit,
+        merchant_filter=merchant,
+        category_filter=category,
+    )
+    return {"period": period, "count": len(txs), "transactions": txs}
+
+
+@app.get("/api/finance/summary", dependencies=[Depends(require_token)])
+async def finance_summary(
+    session: Annotated[Session, Depends(get_session)],
+    period: str = "month",
+) -> dict:
+    """Return spending summary: total, by-category breakdown, subscriptions."""
+    from src.services.transaction_queries import (
+        date_range_for_period,
+        detect_subscriptions,
+        spending_by_category,
+        total_spent,
+    )
+
+    start, end = date_range_for_period(period)
+    return {
+        "period": period,
+        "total": total_spent(session, start=start, end=end),
+        "categories": spending_by_category(session, start=start, end=end, top_n=10),
+        "subscriptions": detect_subscriptions(session),
+    }
 
 
 def main() -> None:

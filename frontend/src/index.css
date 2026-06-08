@@ -39,6 +39,15 @@
     overscroll-behavior-y: contain;
   }
 
+  /* Hide scrollbar but keep scroll behaviour (horizontal period pills, etc.) */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   /* 16px+ inputs prevent iOS Safari zoom-on-focus */
   .input-ios {
     font-size: 16px;

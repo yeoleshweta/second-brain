@@ -1,4 +1,4 @@
-import { MessageCircle, BookOpen, Settings, CalendarDays } from 'lucide-react'
+import { MessageCircle, BookOpen, Settings, CalendarDays, DollarSign } from 'lucide-react'
 import { AGENTS } from '@/agents'
 import { CharacterAvatarByAgentId } from '@/components/friends/CharacterAvatar'
 import { FriendsDoorHeader } from '@/components/friends/FriendsDecor'
@@ -43,6 +43,7 @@ export function Sidebar({
             { id: 'chat' as View, icon: <MessageCircle size={16} />, label: 'Central Perk Chat' },
             { id: 'reading' as View, icon: <BookOpen size={16} />, label: 'Reading List' },
             { id: 'agenda' as View, icon: <CalendarDays size={16} />, label: 'Chandler Agenda' },
+            { id: 'finance' as View, icon: <DollarSign size={16} />, label: 'Finance' },
             { id: 'settings' as View, icon: <Settings size={16} />, label: 'Settings' },
           ] as const
         ).map(({ id, icon, label }) => (

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { MessageCircle, BookOpen, X, Scroll, Settings, History, CalendarDays } from 'lucide-react'
+import { MessageCircle, BookOpen, X, Scroll, Settings, History, CalendarDays, DollarSign } from 'lucide-react'
 import { Sidebar } from '@/components/Sidebar'
 import { MessageBubble } from '@/components/MessageBubble'
 import { ChatInput } from '@/components/ChatInput'
 import { ReadingList } from '@/components/ReadingList'
 import { Agenda } from '@/components/Agenda'
+import FinanceDashboard from '@/components/FinanceDashboard'
 import { SettingsView } from '@/components/SettingsView'
 import { RecentChats } from '@/components/RecentChats'
 import { FriendsBackground, FriendsDoorHeader } from '@/components/friends/FriendsDecor'
@@ -174,6 +175,7 @@ function MobileHeader({
   const label =
     view === 'reading' ? 'Reading'
     : view === 'agenda' ? 'Agenda'
+    : view === 'finance' ? 'Finance'
     : view === 'settings' ? 'Settings'
     : null
   return (
@@ -205,10 +207,11 @@ function MobileHeader({
 // ── Bottom nav (mobile) ───────────────────────────────────────────────────────
 function BottomNav({ view, onChange }: { view: View; onChange: (v: View) => void }) {
   const tabs: { id: View; icon: React.ReactNode; label: string }[] = [
-    { id: 'chat',    icon: <MessageCircle size={24} />, label: 'Chat'    },
-    { id: 'reading', icon: <BookOpen size={24} />,       label: 'Reading' },
-    { id: 'agenda',  icon: <CalendarDays size={24} />,   label: 'Agenda'  },
-    { id: 'settings', icon: <Settings size={24} />,      label: 'Settings' },
+    { id: 'chat',     icon: <MessageCircle size={20} />, label: 'Chat'    },
+    { id: 'reading',  icon: <BookOpen size={20} />,      label: 'Reading' },
+    { id: 'agenda',   icon: <CalendarDays size={20} />,  label: 'Agenda'  },
+    { id: 'finance',  icon: <DollarSign size={20} />,    label: 'Finance' },
+    { id: 'settings', icon: <Settings size={20} />,      label: 'Settings' },
   ]
   return (
     <nav className="md:hidden shrink-0 bg-white/95 backdrop-blur-md border-t border-paper-200 flex pb-safe">
@@ -216,7 +219,7 @@ function BottomNav({ view, onChange }: { view: View; onChange: (v: View) => void
         <button
           key={id}
           onClick={() => onChange(id)}
-          className={`flex-1 flex flex-col items-center justify-center gap-0.5 pt-2 pb-1.5 text-xs font-medium transition min-h-[56px] active:scale-95 touch-manipulation ${
+          className={`flex-1 flex flex-col items-center justify-center gap-0.5 pt-1.5 pb-1 text-[10px] font-medium transition min-h-[52px] active:scale-95 touch-manipulation ${
             view === id ? 'text-friends-purple' : 'text-paper-400'
           }`}
         >
@@ -386,6 +389,10 @@ function App() {
         ) : view === 'agenda' ? (
           <div className="flex-1 overflow-hidden">
             <Agenda />
+          </div>
+        ) : view === 'finance' ? (
+          <div className="flex-1 overflow-hidden">
+            <FinanceDashboard />
           </div>
         ) : (
           <div className="flex-1 overflow-hidden">
