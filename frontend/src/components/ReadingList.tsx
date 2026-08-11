@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { BookOpen, ExternalLink, Check, Trash2, RotateCcw, RefreshCw, Search, BookMarked } from 'lucide-react'
+import { BookOpen, ExternalLink, Check, Trash2, RotateCcw, RefreshCw, Search, BookMarked, Smartphone } from 'lucide-react'
 import { getReadingList, updateItem, deleteItem } from '@/lib/api'
 import { openExternalUrl } from '@/lib/openExternal'
 import { opensInAppReader } from '@/lib/readingItem'
@@ -21,6 +21,24 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: 'in_progress', label: 'In Progress' },
   { id: 'read',        label: 'Read'        },
 ]
+
+/** True when the item came from Apple Books sync (url starts with apple-books://) */
+function isAppleBook(item: ReadingItem): boolean {
+  return (item.url ?? '').startsWith('apple-books://')
+}
+
+/** URL to open an Apple Books item.
+ *
+ *  We use https://books.apple.com/search?q= which iOS treats as a Universal
+ *  Link and hands directly to the Books app. IMPORTANT: this only works when
+ *  rendered as a real <a href> that the user taps — programmatic JS clicks
+ *  do NOT trigger Universal Links on iOS. All Apple Books buttons must be
+ *  <a> elements, never <button onClick>.
+ */
+function appleBooksOpenUrl(item: ReadingItem): string {
+  const query = encodeURIComponent(`${item.title} ${item.source ?? ''}`.trim())
+  return `https://books.apple.com/search?q=${query}`
+}
 
 function displayProgress(item: ReadingItem): number {
   const pct = item.progress ?? 0
@@ -60,6 +78,7 @@ function ItemCard({
   const meta = STATUS_META[status] ?? STATUS_META.unread
   const progress = displayProgress(item)
   const inApp = opensInAppReader(item)
+  const appleBook = isAppleBook(item)
 
   return (
     <div className="bg-white rounded-2xl border border-paper-100 shadow-card hover:shadow-card-lg transition p-4 flex gap-3">
@@ -68,10 +87,22 @@ function ItemCard({
       <div className="flex-1 min-w-0 space-y-1.5">
         {/* Title + external link */}
         <div className="flex items-start gap-2">
-          <p className="font-semibold text-sm text-paper-800 leading-snug line-clamp-2 flex-1">
-            {item.title}
-          </p>
-          {item.url && (
+          {appleBook ? (
+            <a
+              href={appleBooksOpenUrl(item)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-sm text-amber-700 leading-snug line-clamp-2 flex-1 text-left active:opacity-70 transition"
+              aria-label={`Open "${item.title}" in Apple Books`}
+            >
+              {item.title}
+            </a>
+          ) : (
+            <p className="font-semibold text-sm text-paper-800 leading-snug line-clamp-2 flex-1">
+              {item.title}
+            </p>
+          )}
+          {item.url && !appleBook && (
             <button
               type="button"
               onClick={() => openExternalUrl(item.url!)}
@@ -80,6 +111,18 @@ function ItemCard({
             >
               <ExternalLink size={13} />
             </button>
+          )}
+          {appleBook && (
+            <a
+              href={appleBooksOpenUrl(item)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 touch-target flex items-center justify-center rounded-lg bg-amber-50 active:bg-amber-100 text-amber-500 active:text-amber-600 transition mt-0.5"
+              aria-label="Open in Apple Books"
+              title="Open in Apple Books"
+            >
+              <BookOpen size={13} />
+            </a>
           )}
         </div>
 
@@ -113,13 +156,26 @@ function ItemCard({
 
         {/* Action buttons */}
         <div className="flex flex-wrap gap-2 pt-0.5">
-          <button
-            onClick={() => onRead(item)}
-            className="flex items-center gap-1.5 text-xs font-medium text-accent-500 active:text-accent-600 bg-accent-50 active:bg-accent-100 px-3 py-2 rounded-lg transition min-h-[44px] touch-manipulation"
-          >
-            {inApp ? <BookMarked size={14} /> : <ExternalLink size={14} />}
-            {inApp ? 'Read' : 'Open in Safari'}
-          </button>
+          {appleBook ? (
+            /* Must be <a>, not <button>, so iOS Universal Links open the Books app */
+            <a
+              href={appleBooksOpenUrl(item)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-xs font-medium text-amber-600 active:text-amber-700 bg-amber-50 active:bg-amber-100 px-3 py-2 rounded-lg transition min-h-[44px] touch-manipulation"
+            >
+              <BookOpen size={14} />
+              Open in Books
+            </a>
+          ) : (
+            <button
+              onClick={() => onRead(item)}
+              className="flex items-center gap-1.5 text-xs font-medium text-accent-500 active:text-accent-600 bg-accent-50 active:bg-accent-100 px-3 py-2 rounded-lg transition min-h-[44px] touch-manipulation"
+            >
+              {inApp ? <BookMarked size={14} /> : <ExternalLink size={14} />}
+              {inApp ? 'Read' : 'Open in Safari'}
+            </button>
+          )}
           {status !== 'read' && (
             <button
               onClick={() => onMarkRead(id)}
@@ -224,6 +280,10 @@ export function ReadingList() {
   }
 
   function handleOpenItem(item: ReadingItem) {
+    if (isAppleBook(item)) {
+      openExternalUrl(appleBooksOpenUrl(item))
+      return
+    }
     if (item.url && !opensInAppReader(item)) {
       openExternalUrl(item.url)
       return
