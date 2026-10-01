@@ -130,12 +130,26 @@ def push_to_api(books: list[dict]) -> dict:
         },
         method="POST",
     )
+    # Render free tier cold-starts can take 60-90s — use a generous timeout.
+    # We also do a lightweight wake-up ping first so the real request doesn't time out.
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        wake = urllib.request.Request(f"{API_URL}/api/health", method="GET")
+        try:
+            urllib.request.urlopen(wake, timeout=90)
+        except Exception:
+            pass  # health endpoint may 404 — that's fine, we just want to wake the dyno
+
+        with urllib.request.urlopen(req, timeout=90) as resp:
             return json.loads(resp.read())
     except urllib.error.HTTPError as e:
         body = e.read().decode(errors="replace")
         print(f"ERROR {e.code}: {body}", file=sys.stderr)
+        sys.exit(1)
+    except TimeoutError:
+        print(
+            "ERROR: Request timed out. Render may still be waking up — wait 30s and retry.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
 
@@ -151,7 +165,7 @@ def main() -> None:
     unread   = [b for b in books if b["status"] == "unread"]
     print(f"  Reading: {len(reading)}  Finished: {len(finished)}  Unread: {len(unread)}")
 
-    print(f"  Syncing to {API_URL}…")
+    print(f"  Syncing to {API_URL}… (may take ~60s if server was sleeping)")
     result = push_to_api(books)
     print(f"  Done: {result}")
 

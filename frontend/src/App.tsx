@@ -1,20 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
-import { MessageCircle, BookOpen, X, Scroll, Settings, History, CalendarDays, DollarSign } from 'lucide-react'
+import { MessageCircle, X, Scroll, Settings, History, Brain } from 'lucide-react'
 import { Sidebar } from '@/components/Sidebar'
+import { SetupBanner } from '@/components/SetupBanner'
 import { MessageBubble } from '@/components/MessageBubble'
+import { useChat } from '@/hooks/useChat'
+import { useVoiceCall } from '@/hooks/useVoiceCall'
 import { ChatInput } from '@/components/ChatInput'
+import { VoiceCallBar } from '@/components/VoiceCallBar'
 import { ReadingList } from '@/components/ReadingList'
 import { Agenda } from '@/components/Agenda'
 import FinanceDashboard from '@/components/FinanceDashboard'
 import { SettingsView } from '@/components/SettingsView'
 import { RecentChats } from '@/components/RecentChats'
-import { FriendsBackground, FriendsDoorHeader } from '@/components/friends/FriendsDecor'
-import { FriendsHomescreenGrid, FriendAppIcon } from '@/components/friends/FriendsHomescreen'
-import { CharacterAvatarByAgentId } from '@/components/friends/CharacterAvatar'
-import { useChat } from '@/hooks/useChat'
+import { BrandHeader } from '@/components/BrandHeader'
 import { getMorningBriefLatest } from '@/lib/api'
-import type { AgentDef } from '@/agents'
-import { AGENTS } from '@/agents'
+import { isVoiceRepliesEnabled, speakReply } from '@/lib/voice'
+import { CAPTURE_HINTS } from '@/agents'
 import type { AppView, Attachment } from '@/types'
 
 type View = AppView
@@ -23,20 +24,20 @@ type View = AppView
 function BriefBanner({ content, onDismiss }: { content: string; onDismiss: () => void }) {
   const lines = content.split('\n').filter(Boolean).slice(0, 4)
   return (
-    <div className="bg-gradient-to-br from-friends-frame/40 to-gold-100 border-2 border-friends-frame rounded-2xl p-4 mb-4 relative shadow-card">
+    <div className="bg-white border border-paper-200 rounded-2xl p-4 mb-4 relative shadow-card">
       <button
         onClick={onDismiss}
-        className="absolute top-2 right-2 touch-target flex items-center justify-center rounded-full bg-paper-200 active:bg-paper-300 transition text-paper-600"
+        className="absolute top-2 right-2 touch-target flex items-center justify-center rounded-full bg-paper-100 active:bg-paper-200 transition text-paper-600"
         aria-label="Dismiss"
       >
         <X size={14} />
       </button>
       <div className="flex items-center gap-2 mb-2 pr-8">
-        <div className="w-6 h-6 rounded-full bg-gold-400 flex items-center justify-center">
-          <Scroll size={12} className="text-white" />
+        <div className="w-6 h-6 rounded-full bg-paper-800 flex items-center justify-center">
+          <Scroll size={12} className="text-paper-50" />
         </div>
-        <span className="text-[10px] font-bold text-friends-purple-dark tracking-widest uppercase">
-          centralperk brief
+        <span className="text-[10px] font-bold text-paper-500 tracking-widest uppercase">
+          Morning brief
         </span>
       </div>
       {lines.map((l, i) => (
@@ -49,112 +50,34 @@ function BriefBanner({ content, onDismiss }: { content: string; onDismiss: () =>
 // ── Empty / intro state ───────────────────────────────────────────────────────
 function EmptyState({
   onSend,
-  onNewChat,
 }: {
   onSend: (msg: string) => void
-  onNewChat?: () => void
 }) {
-  const liveAgents = AGENTS.filter((a) => a.live)
-  const futureAgents = AGENTS.filter((a) => !a.live)
-
-  function handleAgentTap(agent: AgentDef) {
-    const first = agent.suggestions[0]
-    if (first) onSend(first.prompt)
-  }
-
   return (
-    <div className="py-3 md:py-4 px-1 space-y-4 md:space-y-5">
-
-      {/* Hero: animated couch logo + homescreen grid */}
-      <div className="space-y-3 md:space-y-4">
-        <FriendsDoorHeader hero onLogoClick={onNewChat} />
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl md:rounded-3xl border border-friends-frame/50 shadow-card p-3 md:p-4">
-          <p className="text-[10px] font-bold text-friends-purple uppercase tracking-widest text-center mb-2 md:mb-3">
-            Tap a friend on the couch
-          </p>
-          <FriendsHomescreenGrid onAgentTap={handleAgentTap} />
-          <p className="text-xs text-paper-500 text-center mt-3 md:mt-4 leading-relaxed">
-            Ross & Monica are live — everyone else pulls up a chair soon.
-          </p>
-        </div>
+    <div className="py-10 md:py-16 px-2 flex flex-col items-center text-center">
+      <div className="w-14 h-14 rounded-2xl bg-paper-800 text-paper-50 flex items-center justify-center mb-4">
+        <Brain size={28} strokeWidth={1.5} />
       </div>
-
-      {/* Mobile: quick Ross prompts (compact) */}
-      {liveAgents.length > 0 && (
-        <div className="md:hidden space-y-2">
-          <p className="text-[10px] font-bold text-paper-400 uppercase tracking-widest px-1">
-            Try asking Ross
-          </p>
-          {liveAgents[0].suggestions.map(({ label, prompt }) => (
-            <button
-              key={prompt}
-              onClick={() => onSend(prompt)}
-              className="w-full flex items-center justify-between bg-white active:bg-paper-100 border border-paper-200 rounded-xl px-4 py-3.5 text-left transition min-h-[48px] shadow-card"
-            >
-              <span className="text-sm font-semibold text-paper-700">{label}</span>
-              <span className="text-paper-300 text-lg leading-none ml-2 shrink-0">›</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Desktop: full agent cards with suggestions */}
-      <div className="hidden md:block space-y-3">
-        <p className="text-[10px] font-bold text-paper-400 uppercase tracking-widest px-1">
-          Online now
-        </p>
-        {liveAgents.map((agent) => (
-          <div key={agent.id} className="bg-white rounded-2xl border border-paper-200 shadow-card overflow-hidden">
-            <div className="flex items-center gap-3 px-4 pt-3.5 pb-2">
-              <CharacterAvatarByAgentId agentId={agent.id} size="md" framed />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-sm font-bold text-paper-800">{agent.name}</span>
-                  <span className="flex items-center gap-1 text-[9px] font-bold text-friends-awning bg-sage-100 px-1.5 py-0.5 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-friends-awning inline-block animate-pulse" />
-                    AT CENTRAL PERK
-                  </span>
-                </div>
-                <p className="text-[10px] text-paper-500 font-medium mt-0.5">{agent.specialty}</p>
-                <p className="text-[10px] text-friends-purple italic leading-snug">&ldquo;{agent.catchphrase}&rdquo;</p>
-              </div>
-            </div>
-            <div className="px-3 pb-3 space-y-1.5">
-              {agent.suggestions.map(({ label, prompt }) => (
-                <button
-                  key={prompt}
-                  onClick={() => onSend(prompt)}
-                  className="w-full flex items-center justify-between bg-paper-50 hover:bg-paper-100 active:bg-paper-200 border border-paper-200 rounded-xl px-3.5 py-2.5 text-left transition group min-h-[44px]"
-                >
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-paper-700 group-hover:text-paper-900 leading-none mb-0.5">
-                      {label}
-                    </p>
-                    <p className="text-[10px] text-paper-400 truncate max-w-[220px]">{prompt}</p>
-                  </div>
-                  <span className="text-paper-300 group-hover:text-accent-400 transition text-lg leading-none ml-2 shrink-0">›</span>
-                </button>
-              ))}
-            </div>
-          </div>
+      <h1 className="text-xl md:text-2xl font-semibold text-paper-800 tracking-tight">
+        Second Brain
+      </h1>
+      <p className="mt-2 text-sm text-paper-500 max-w-sm leading-relaxed">
+        One chat, one vault. Talk, or start with “remember this…” to append today’s daily note in Inbox.
+      </p>
+      <p className="mt-2 text-[11px] text-paper-400 font-mono">
+        00-Inbox/Daily
+      </p>
+      <div className="mt-6 flex flex-wrap justify-center gap-2">
+        {CAPTURE_HINTS.map(({ label, prompt }) => (
+          <button
+            key={prompt}
+            type="button"
+            onClick={() => onSend(prompt)}
+            className="px-3.5 py-2 text-sm font-medium text-paper-700 bg-white border border-paper-200 rounded-xl shadow-card active:bg-paper-100 min-h-[44px]"
+          >
+            {label}
+          </button>
         ))}
-      </div>
-
-      {/* Coming-soon as a grid of small cards — desktop only */}
-      <div className="hidden md:block space-y-2">
-        <p className="text-[10px] font-bold text-paper-400 uppercase tracking-widest px-1">
-          Coming soon
-        </p>
-        <div className="grid grid-cols-3 gap-3">
-          {futureAgents.map((agent) => (
-            <div key={agent.id} className="flex flex-col items-center opacity-55">
-              <FriendAppIcon agent={agent} dimmed />
-              <span className="text-[9px] font-bold text-paper-400 bg-paper-100 px-2 py-0.5 rounded-full mt-1">
-                Phase {agent.phase}
-              </span>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   )
@@ -180,7 +103,7 @@ function MobileHeader({
     : null
   return (
     <header className="md:hidden shrink-0 bg-white/95 backdrop-blur-md border-b border-paper-200 flex items-center justify-between px-4 py-2 pt-safe min-h-[48px] sticky top-0 z-20">
-      <FriendsDoorHeader compact onLogoClick={onLogoClick} />
+      <BrandHeader compact onLogoClick={onLogoClick} />
       <div className="flex items-center gap-2">
         {view === 'chat' && (
           <button
@@ -188,7 +111,7 @@ function MobileHeader({
             onClick={onToggleHistory}
             className={`touch-target flex items-center justify-center rounded-full transition ${
               showHistory
-                ? 'bg-friends-frame/40 text-friends-purple'
+                ? 'bg-paper-200 text-paper-800'
                 : 'bg-paper-100 text-paper-500 active:bg-paper-200'
             }`}
             aria-label="Recent chats"
@@ -207,10 +130,7 @@ function MobileHeader({
 // ── Bottom nav (mobile) ───────────────────────────────────────────────────────
 function BottomNav({ view, onChange }: { view: View; onChange: (v: View) => void }) {
   const tabs: { id: View; icon: React.ReactNode; label: string }[] = [
-    { id: 'chat',     icon: <MessageCircle size={20} />, label: 'Chat'    },
-    { id: 'reading',  icon: <BookOpen size={20} />,      label: 'Reading' },
-    { id: 'agenda',   icon: <CalendarDays size={20} />,  label: 'Agenda'  },
-    { id: 'finance',  icon: <DollarSign size={20} />,    label: 'Finance' },
+    { id: 'chat',     icon: <MessageCircle size={20} />, label: 'Chat'     },
     { id: 'settings', icon: <Settings size={20} />,      label: 'Settings' },
   ]
   return (
@@ -220,10 +140,10 @@ function BottomNav({ view, onChange }: { view: View; onChange: (v: View) => void
           key={id}
           onClick={() => onChange(id)}
           className={`flex-1 flex flex-col items-center justify-center gap-0.5 pt-1.5 pb-1 text-[10px] font-medium transition min-h-[52px] active:scale-95 touch-manipulation ${
-            view === id ? 'text-friends-purple' : 'text-paper-400'
+            view === id ? 'text-paper-800' : 'text-paper-400'
           }`}
         >
-          <span className={`transition ${view === id ? 'text-friends-sofa' : 'text-paper-400'}`}>
+          <span className={`transition ${view === id ? 'text-paper-800' : 'text-paper-400'}`}>
             {icon}
           </span>
           {label}
@@ -247,8 +167,10 @@ function App() {
     loadSession,
     newChat,
   } = useChat()
+  const voice = useVoiceCall(send)
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevMessageCountRef = useRef(0)
+  const spokenIdRef = useRef<string | null>(null)
   const [briefContent, setBriefContent] = useState<string | null>(null)
   const [briefDismissed, setBriefDismissed] = useState(false)
 
@@ -292,6 +214,17 @@ function App() {
     return () => vv.removeEventListener('resize', handler)
   }, [view, messages.length])
 
+  useEffect(() => {
+    if (loading || sending) return
+    const last = messages[messages.length - 1]
+    if (!last || last.role !== 'assistant' || last.status !== 'complete' || !last.content) return
+    if (spokenIdRef.current === last.id) return
+    if (voice.active) return
+    if (!isVoiceRepliesEnabled()) return
+    spokenIdRef.current = last.id
+    void speakReply(last.content, last.intent)
+  }, [messages, loading, sending, voice.active])
+
   const showBanner = briefContent && !briefDismissed && view === 'chat'
   const handleSend = (text: string, attachments: Attachment[] = []) => {
     setShowMobileHistory(false)
@@ -305,15 +238,16 @@ function App() {
   }
 
   const handleNewChat = () => {
+    voice.hangup()
     newChat()
     setShowMobileHistory(false)
     setView('chat')
     prevMessageCountRef.current = 0
+    spokenIdRef.current = null
   }
 
   return (
-    <div className="h-[100dvh] min-h-0 flex overflow-hidden bg-friends-cream relative">
-      <FriendsBackground />
+    <div className="h-[100dvh] min-h-0 flex overflow-hidden bg-paper-50 relative">
       {/* Desktop sidebar */}
       <Sidebar
         activeView={view}
@@ -355,6 +289,7 @@ function App() {
                   <p className="text-sm text-paper-400 text-center py-8">Loading your chats…</p>
                 ) : (
                   <>
+                <SetupBanner onGoToSettings={() => setView('settings')} />
                 {showBanner && (
                   <BriefBanner
                     content={briefContent}
@@ -362,7 +297,7 @@ function App() {
                   />
                 )}
                 {messages.length === 0 ? (
-                  <EmptyState onSend={handleSend} onNewChat={handleNewChat} />
+                  <EmptyState onSend={handleSend} />
                 ) : (
                   <div className="space-y-1 pb-2">
                     {messages.map((m) => (
@@ -376,9 +311,26 @@ function App() {
             </div>
 
             {/* Chat input — sits above bottom nav */}
-            <div className="shrink-0 bg-friends-cream/95 border-t border-friends-frame/50 px-3 md:px-5 py-2 md:py-3 backdrop-blur-sm">
+            <div className="shrink-0 bg-paper-50/95 border-t border-paper-200 px-3 md:px-5 py-2 md:py-3 backdrop-blur-sm">
               <div className="max-w-2xl mx-auto">
-                <ChatInput onSend={handleSend} disabled={sending} />
+                {voice.active && (
+                  <VoiceCallBar
+                    phase={voice.phase}
+                    level={voice.level}
+                    error={voice.error}
+                    onHangup={voice.hangup}
+                    onTap={voice.endUtterance}
+                  />
+                )}
+                <ChatInput
+                  onSend={handleSend}
+                  disabled={sending && !voice.active}
+                  voice={{
+                    active: voice.active,
+                    phase: voice.phase,
+                    onToggle: voice.toggle,
+                  }}
+                />
               </div>
             </div>
           </>
@@ -396,7 +348,7 @@ function App() {
           </div>
         ) : (
           <div className="flex-1 overflow-hidden">
-            <SettingsView />
+            <SettingsView onOpenView={setView} />
           </div>
         )}
 

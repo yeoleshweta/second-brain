@@ -9,7 +9,7 @@ def test_graph_builds() -> None:
 
 
 def test_agents_have_run() -> None:
-    from src.agents import calendar_agent, finance, health, knowledge
+    from src.agents import calendar_agent, career, finance, health, knowledge, second_brain
 
-    for mod in (knowledge, health, finance, calendar_agent):
+    for mod in (second_brain, knowledge, health, finance, calendar_agent, career):
         assert hasattr(mod, "run"), f"{mod.__name__} missing run()"

@@ -177,7 +177,7 @@ export function ReadingReader({
               <p className="text-sm font-semibold text-paper-800">PDF not cached yet</p>
               <p className="text-sm text-paper-500 leading-relaxed">
                 Tap below to open the full paper in Safari. Re-open this item after a moment if
-                you just saved it — Ross will retry the download.
+                you just saved it — the app will retry the download.
               </p>
             </div>
             {sourceUrl && (

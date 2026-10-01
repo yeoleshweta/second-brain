@@ -4,13 +4,16 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# backend/src/config/settings.py → backend/.env (cwd-independent)
+_BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_BACKEND_DIR / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -19,6 +22,8 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(..., description="OpenAI API key")
     openai_model_main: str = "gpt-4o"
     openai_model_cheap: str = "gpt-4o-mini"
+    openai_transcribe_model: str = "whisper-1"
+    openai_tts_model: str = "tts-1"
 
     # App
     # 0.0.0.0 so Tailscale-routed traffic can reach the server. Token-gated.
@@ -71,6 +76,23 @@ class Settings(BaseSettings):
     # Apple Books MCP (local macOS Books app, read-only)
     apple_books_mcp_command: str = "uvx"
     apple_books_mcp_args: str = "apple-books-mcp@latest"
+
+    @field_validator("openai_api_key", mode="before")
+    @classmethod
+    def _strip_openai_key(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        cleaned = value.strip().strip("'").strip('"')
+        return cleaned
+
+    @property
+    def openai_key_present(self) -> bool:
+        return bool(self.openai_api_key)
+
+    @property
+    def openai_key_format_ok(self) -> bool:
+        key = self.openai_api_key
+        return key.startswith("sk-") and len(key) >= 40
 
     @property
     def obsidian_base_url(self) -> str:

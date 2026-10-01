@@ -48,7 +48,6 @@ export default {
           500: '#3e6830',
           700: '#224018',
         },
-        // Warm rust / Phoebe wellness
         rust: {
           100: '#fae8e0',
           200: '#f5cfc0',
@@ -56,7 +55,7 @@ export default {
           500: '#a84020',
           700: '#6a2010',
         },
-        // Friends / Central Perk palette
+        // Legacy palette tokens (class names still used in a few views)
         friends: {
           purple:      '#6B3FA0',
           'purple-dark': '#4A2870',
@@ -76,7 +75,6 @@ export default {
           600: '#4A3728',
           700: '#3a2a1e',
         },
-        // Rose/blush — Rachel (fashion & style)
         rose: {
           50:  '#fff5f7',
           100: '#fde8ed',

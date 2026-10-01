@@ -1,4 +1,4 @@
-export type Intent = 'knowledge' | 'health' | 'finance' | 'calendar' | 'general'
+export type Intent = 'knowledge' | 'health' | 'finance' | 'calendar' | 'career' | 'general'
 
 export type AppView = 'chat' | 'reading' | 'agenda' | 'finance' | 'settings'
 
@@ -68,6 +68,7 @@ export interface ChatStreamEvent {
     | 'suggest_items'
     | 'book_items'
     | 'session_id'
+    | 'user_message'
   data: string
 }
 

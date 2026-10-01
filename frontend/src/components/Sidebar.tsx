@@ -1,7 +1,5 @@
 import { MessageCircle, BookOpen, Settings, CalendarDays, DollarSign } from 'lucide-react'
-import { AGENTS } from '@/agents'
-import { CharacterAvatarByAgentId } from '@/components/friends/CharacterAvatar'
-import { FriendsDoorHeader } from '@/components/friends/FriendsDecor'
+import { BrandHeader } from '@/components/BrandHeader'
 import { RecentChats } from '@/components/RecentChats'
 import type { AppView, ChatSessionSummary } from '@/types'
 
@@ -24,26 +22,17 @@ export function Sidebar({
   onSelectSession,
   onNewChat,
 }: Props) {
-  const liveAgents = AGENTS.filter((a) => a.live)
-  const futureAgents = AGENTS.filter((a) => !a.live)
-
   return (
-    <aside className="hidden md:flex flex-col w-72 shrink-0 bg-white/95 border-r border-friends-frame/60 h-full overflow-y-auto backdrop-blur-sm">
+    <aside className="hidden md:flex flex-col w-72 shrink-0 bg-white/95 border-r border-paper-200 h-full overflow-y-auto backdrop-blur-sm">
 
       <div className="px-4 pt-5 pb-4 border-b border-paper-200 shrink-0">
-        <FriendsDoorHeader onLogoClick={onNewChat} />
-        <p className="text-[10px] text-paper-400 mt-3 text-center lowercase tracking-wide">
-          centralperk · 6 friends on the couch
-        </p>
+        <BrandHeader onLogoClick={onNewChat} />
       </div>
 
       <nav className="px-3 pt-3 pb-2 space-y-1 border-b border-paper-200 shrink-0">
         {(
           [
-            { id: 'chat' as View, icon: <MessageCircle size={16} />, label: 'Central Perk Chat' },
-            { id: 'reading' as View, icon: <BookOpen size={16} />, label: 'Reading List' },
-            { id: 'agenda' as View, icon: <CalendarDays size={16} />, label: 'Chandler Agenda' },
-            { id: 'finance' as View, icon: <DollarSign size={16} />, label: 'Finance' },
+            { id: 'chat' as View, icon: <MessageCircle size={16} />, label: 'Chat' },
             { id: 'settings' as View, icon: <Settings size={16} />, label: 'Settings' },
           ] as const
         ).map(({ id, icon, label }) => (
@@ -52,13 +41,13 @@ export function Sidebar({
             onClick={() => onViewChange(id)}
             className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl transition text-left ${
               activeView === id
-                ? 'bg-friends-frame/30 text-friends-purple-dark'
+                ? 'bg-paper-100 text-paper-800'
                 : 'text-paper-500 hover:bg-paper-50 hover:text-paper-700'
             }`}
           >
-            <span className={activeView === id ? 'text-friends-sofa' : 'text-paper-400'}>{icon}</span>
+            <span className={activeView === id ? 'text-paper-800' : 'text-paper-400'}>{icon}</span>
             <span className="text-sm font-medium">{label}</span>
-            {activeView === id && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-friends-sofa" />}
+            {activeView === id && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-paper-800" />}
           </button>
         ))}
       </nav>
@@ -77,60 +66,30 @@ export function Sidebar({
         </div>
       )}
 
-      <div className="flex-1 px-3 py-3 space-y-4 overflow-y-auto">
-        <div>
-          <p className="text-[10px] font-bold text-friends-purple uppercase tracking-widest px-1 mb-2">
-            On the orange couch
-          </p>
-          <div className="space-y-2">
-            {liveAgents.map((agent) => (
-              <div
-                key={agent.id}
-                className="bg-friends-cream rounded-xl border-2 border-friends-frame/80 shadow-card p-3"
-              >
-                <div className="flex items-start gap-2.5">
-                  <CharacterAvatarByAgentId agentId={agent.id} size="md" framed />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="text-sm font-bold text-paper-800">{agent.name}</span>
-                      <span className="text-[9px] font-bold text-friends-awning bg-white px-1.5 py-0.5 rounded-full">
-                        LIVE
-                      </span>
-                    </div>
-                    <p className="text-[10px] font-semibold text-paper-500 mb-0.5">{agent.specialty}</p>
-                    <p className="text-[10px] text-friends-purple italic leading-snug line-clamp-2">
-                      &ldquo;{agent.catchphrase}&rdquo;
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <p className="text-[10px] font-bold text-paper-400 uppercase tracking-widest px-1 mb-2">
-            Not at the Perk yet
-          </p>
-          <div className="space-y-2">
-            {futureAgents.map((agent) => (
-              <div key={agent.id} className="bg-paper-50 rounded-xl border border-paper-100 p-3 opacity-65">
-                <div className="flex items-center gap-2.5">
-                  <CharacterAvatarByAgentId agentId={agent.id} size="sm" framed={false} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold text-paper-700">{agent.name}</span>
-                      <span className="text-[9px] font-bold text-paper-400 bg-paper-200 px-1.5 py-0.5 rounded-full">
-                        Phase {agent.phase}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-paper-400 mt-0.5">{agent.specialty}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      <div className="flex-1 px-3 py-3 overflow-y-auto">
+        <p className="text-[10px] font-bold text-paper-400 uppercase tracking-widest px-1 mb-1">
+          More
+        </p>
+        {(
+          [
+            { id: 'reading' as View, icon: <BookOpen size={15} />, label: 'Reading list' },
+            { id: 'agenda' as View, icon: <CalendarDays size={15} />, label: 'Agenda' },
+            { id: 'finance' as View, icon: <DollarSign size={15} />, label: 'Finance' },
+          ] as const
+        ).map(({ id, icon, label }) => (
+          <button
+            key={id}
+            onClick={() => onViewChange(id)}
+            className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg transition text-left ${
+              activeView === id
+                ? 'bg-paper-100 text-paper-700'
+                : 'text-paper-400 hover:bg-paper-50 hover:text-paper-600'
+            }`}
+          >
+            <span>{icon}</span>
+            <span className="text-xs font-medium">{label}</span>
+          </button>
+        ))}
       </div>
     </aside>
   )

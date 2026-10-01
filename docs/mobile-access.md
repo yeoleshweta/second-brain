@@ -114,6 +114,21 @@ tailscale funnel 5173
 
 This exposes port 5173 publicly via a `*.ts.net` URL. **Use with caution** — the app is token-gated but make sure your `APP_API_TOKEN` is a strong random value first.
 
+### Live microphone on iPhone (HTTPS)
+
+Safari only allows `getUserMedia` in a **secure context**. `http://<mac>:5173` over Tailscale is HTTP, so the mic button cannot record. Camera file-input and Voice Memo attachments still work.
+
+To talk live from the phone, serve the UI over HTTPS on the tailnet (trusted cert, not a self-signed warning page):
+
+```bash
+# Vite already running on :5173
+tailscale serve --bg 5173
+```
+
+Then open the `https://<machine>.<tailnet>.ts.net` URL Tailscale prints, and Add to Home Screen again from that HTTPS origin.
+
+Mac `http://localhost:5173` already counts as secure — Talk mode works there without Serve.
+
 ---
 
 ## Security notes

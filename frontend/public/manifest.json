@@ -1,7 +1,7 @@
 {
-  "name": "centralperk",
-  "short_name": "centralperk",
-  "description": "Central Perk — your Friends-themed second brain. Ross curates knowledge from the orange couch.",
+  "name": "Second Brain",
+  "short_name": "Second Brain",
+  "description": "One chat, one vault, one daily note.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#6B3FA0",

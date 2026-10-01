@@ -23,7 +23,7 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>SECOND_BRAIN_API_URL</key>
-        <string>https://second-brain-xxxx.onrender.com</string>
+        <string>https://second-brain-kwbh.onrender.com</string>
         <key>SECOND_BRAIN_API_TOKEN</key>
         <string>vgDWkmSJ5e0BdF31HFZArHk2mJb1-BrgnuCqbVg5IDQ</string>
     </dict>

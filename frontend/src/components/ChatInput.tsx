@@ -1,21 +1,36 @@
 import { useRef, useState } from 'react'
-import { Send, X, Paperclip } from 'lucide-react'
+import { Send, X, Paperclip, Mic, Camera, PhoneOff } from 'lucide-react'
 import type { Attachment } from '@/types'
 import { uploadFile } from '@/lib/api'
+import { micSupported, transcribeUpload } from '@/lib/voice'
+import type { VoicePhase } from '@/lib/voice'
+
+interface VoiceControls {
+  active: boolean
+  phase: VoicePhase
+  onToggle: () => void
+}
 
 interface Props {
   onSend: (text: string, attachments: Attachment[]) => void
   disabled?: boolean
+  voice?: VoiceControls
 }
 
-export function ChatInput({ onSend, disabled }: Props) {
+export function ChatInput({ onSend, disabled, voice }: Props) {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [uploading, setUploading] = useState(false)
+  const [recordError, setRecordError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
 
-  const canSend = (text.trim().length > 0 || attachments.length > 0) && !disabled && !uploading
+  const canSend =
+    (text.trim().length > 0 || attachments.length > 0) &&
+    !disabled &&
+    !uploading &&
+    !voice?.active
 
   function autoResize() {
     const el = textareaRef.current
@@ -31,9 +46,7 @@ export function ChatInput({ onSend, disabled }: Props) {
     setAttachments([])
     requestAnimationFrame(() => {
       const el = textareaRef.current
-      if (el) {
-        el.style.height = 'auto'
-      }
+      if (el) el.style.height = 'auto'
     })
   }
 
@@ -44,25 +57,78 @@ export function ChatInput({ onSend, disabled }: Props) {
     }
   }
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? [])
+  async function ingestFiles(files: File[]) {
     if (files.length === 0) return
     setUploading(true)
+    setRecordError(null)
     try {
       for (const file of files) {
         const att = await uploadFile(file)
         setAttachments((prev) => [...prev, att])
+        if (file.type.startsWith('audio/') || file.type.startsWith('video/')) {
+          try {
+            const spoken = await transcribeUpload(att.fileId)
+            if (spoken) {
+              setText((prev) => (prev.trim() ? `${prev.trim()} ${spoken}` : spoken))
+              requestAnimationFrame(autoResize)
+            }
+          } catch (err) {
+            setRecordError(
+              err instanceof Error
+                ? err.message
+                : 'Could not transcribe that audio. Send it anyway — the backend will retry.',
+            )
+          }
+        }
       }
     } catch {
-      alert('Upload failed — check your connection and try again.')
+      setRecordError('Upload failed — check your connection and try again.')
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
+      if (cameraRef.current) cameraRef.current.value = ''
     }
   }
 
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    await ingestFiles(Array.from(e.target.files ?? []))
+  }
+
+  async function handlePaste(e: React.ClipboardEvent) {
+    const files = Array.from(e.clipboardData.items)
+      .filter((item) => item.kind === 'file')
+      .map((item) => item.getAsFile())
+      .filter((f): f is File => !!f)
+    if (files.length === 0) return
+    e.preventDefault()
+    await ingestFiles(files)
+  }
+
+  function handleMic() {
+    setRecordError(null)
+    if (voice) {
+      if (!micSupported() && !voice.active) {
+        setRecordError(
+          'Live mic needs HTTPS (or localhost). On iPhone over Tailscale HTTP, attach a Voice Memo instead.',
+        )
+        fileRef.current?.click()
+      }
+      voice.onToggle()
+      return
+    }
+    fileRef.current?.click()
+  }
+
   return (
-    <div className="bg-white rounded-2xl border-2 border-friends-frame/70 shadow-card-lg overflow-hidden">
+    <div
+      className="bg-white rounded-2xl border border-paper-200 shadow-card-lg overflow-hidden"
+      onPaste={handlePaste}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault()
+        void ingestFiles(Array.from(e.dataTransfer.files))
+      }}
+    >
       {attachments.length > 0 && (
         <div className="flex flex-wrap gap-2 px-3 pt-3">
           {attachments.map((a) => (
@@ -84,20 +150,42 @@ export function ChatInput({ onSend, disabled }: Props) {
         </div>
       )}
 
-      <div className="flex items-end gap-1.5 px-2 py-2 sm:px-3 sm:py-2.5">
+      {recordError && (
+        <p className="px-3 pt-2 text-[11px] text-paper-500 leading-snug">{recordError}</p>
+      )}
+
+      <div className="flex items-end gap-1 px-2 py-2 sm:px-3 sm:py-2.5">
+        <button
+          type="button"
+          onClick={() => cameraRef.current?.click()}
+          disabled={uploading || disabled || voice?.active}
+          className="touch-target shrink-0 flex items-center justify-center rounded-xl text-paper-500 active:bg-paper-100 active:text-friends-purple transition self-end"
+          aria-label="Take photo"
+        >
+          <Camera size={22} />
+        </button>
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
-          disabled={uploading || disabled}
+          disabled={uploading || disabled || voice?.active}
           className="touch-target shrink-0 flex items-center justify-center rounded-xl text-paper-500 active:bg-paper-100 active:text-friends-purple transition self-end"
           aria-label="Attach file"
         >
           <Paperclip size={22} />
         </button>
         <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+        <input
           ref={fileRef}
           type="file"
           multiple
+          accept="image/*,audio/*,video/*,.pdf,.txt,.md,.doc,.docx"
           className="hidden"
           onChange={handleFileChange}
         />
@@ -106,8 +194,14 @@ export function ChatInput({ onSend, disabled }: Props) {
           ref={textareaRef}
           rows={1}
           value={text}
-          placeholder={disabled ? 'Ross is thinking…' : 'Message at centralperk…'}
-          disabled={disabled}
+          placeholder={
+            voice?.active
+              ? 'Talk mode on — speak, or type here to cancel'
+              : disabled
+                ? 'Thinking…'
+                : 'Talk, or “remember this…” / “write this down…”'
+          }
+          disabled={disabled || voice?.active}
           enterKeyHint="send"
           autoComplete="off"
           autoCorrect="on"
@@ -118,6 +212,20 @@ export function ChatInput({ onSend, disabled }: Props) {
           }}
           onKeyDown={handleKeyDown}
         />
+
+        <button
+          type="button"
+          onClick={handleMic}
+          disabled={uploading || (disabled && !voice?.active)}
+          className={`touch-target shrink-0 flex items-center justify-center rounded-xl transition self-end ${
+            voice?.active
+              ? 'bg-rust-400 text-white'
+              : 'text-paper-500 active:bg-paper-100 active:text-friends-purple'
+          }`}
+          aria-label={voice?.active ? 'Hang up' : 'Talk'}
+        >
+          {voice?.active ? <PhoneOff size={18} /> : <Mic size={22} />}
+        </button>
 
         <button
           type="button"
@@ -137,6 +245,11 @@ export function ChatInput({ onSend, disabled }: Props) {
           )}
         </button>
       </div>
+      {!voice?.active && !disabled && (
+        <p className="px-3 pb-2 text-[11px] text-paper-400">
+          Capture: remember this / write this down
+        </p>
+      )}
     </div>
   )
 }

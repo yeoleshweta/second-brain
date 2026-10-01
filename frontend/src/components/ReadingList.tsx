@@ -434,7 +434,7 @@ export function ReadingList() {
                 {query ? 'No matches found' : filter !== 'all' ? 'Nothing here yet' : 'Your reading list is empty'}
               </p>
               <p className="text-sm text-paper-400 mt-1">
-                {!query && filter === 'all' && 'Tell Ross "save in notes https://…" to add articles'}
+                {!query && filter === 'all' && 'Paste a URL in chat to add articles'}
               </p>
             </div>
           ) : (

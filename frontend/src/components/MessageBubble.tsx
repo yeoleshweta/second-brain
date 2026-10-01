@@ -1,11 +1,22 @@
 import ReactMarkdown from 'react-markdown'
 import type { Components } from 'react-markdown'
-import { AGENT_BY_INTENT } from '@/agents'
-import { CharacterAvatarByAgentId } from '@/components/friends/CharacterAvatar'
 import { SuggestionPicker } from '@/components/SuggestionPicker'
 import { BookPicker } from '@/components/BookPicker'
 import { openExternalUrl, isExternalUrl } from '@/lib/openExternal'
+import { speakReply } from '@/lib/voice'
 import type { Message } from '@/types'
+import { Brain, Volume2 } from 'lucide-react'
+
+function AssistantMark() {
+  return (
+    <div
+      className="w-8 h-8 rounded-xl bg-paper-800 text-paper-50 flex items-center justify-center shrink-0 self-end mb-0.5"
+      aria-hidden
+    >
+      <Brain size={15} strokeWidth={1.75} />
+    </div>
+  )
+}
 
 const markdownLinkComponents: Components = {
   a: ({ href, children }) => {
@@ -57,12 +68,22 @@ function ObsidianBadge({ path }: { path: string }) {
 }
 
 // ── User message ──────────────────────────────────────────────────────────────
-function UserBubble({ content }: { content: string }) {
+function UserBubble({ message }: { message: Message }) {
+  const { content, attachments } = message
   return (
     <div className="flex justify-end py-1">
       <div className="max-w-[85%] md:max-w-[65%]">
         <div className="bg-friends-purple text-white rounded-[22px] rounded-br-[6px] px-4 py-2.5 shadow-card border border-friends-purple-dark/30">
-          <p className="text-sm leading-relaxed break-words">{content}</p>
+          {content ? (
+            <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{content}</p>
+          ) : (
+            <p className="text-sm italic text-white/80">Attachment</p>
+          )}
+          {attachments && attachments.length > 0 && (
+            <p className="text-[10px] text-white/70 mt-1 truncate">
+              {attachments.map((a) => a.name).join(', ')}
+            </p>
+          )}
         </div>
       </div>
     </div>
@@ -72,39 +93,31 @@ function UserBubble({ content }: { content: string }) {
 // ── Assistant message ─────────────────────────────────────────────────────────
 function AssistantBubble({ message }: { message: Message }) {
   const { content, status, intent, obsidianPath, digestItems, suggestItems, bookItems } = message
-  const agent = intent ? AGENT_BY_INTENT[intent] : null
   const isThinking = status === 'thinking' && !content
   const isError = status === 'error'
 
-  const agentDef = intent ? AGENT_BY_INTENT[intent] : null
-  const agentId = agentDef?.id ?? 'knowledge'
-
   return (
     <div className="flex items-end gap-2.5 py-1">
-      {agentDef ? (
-        <CharacterAvatarByAgentId agentId={agentId} size="md" framed />
-      ) : (
-        <div className="w-9 h-9 rounded-xl bg-paper-200 flex items-center justify-center text-lg shrink-0 self-end mb-0.5 shadow-card">
-          🤖
-        </div>
-      )}
+      <AssistantMark />
 
       <div className="flex-1 min-w-0">
-        {agent && (
+        {content && !isThinking && (
           <div className="flex items-center gap-1.5 mb-1.5 ml-0.5">
-            <span className="text-xs font-bold text-paper-600">{agent.name}</span>
-            <span
-              className={`hidden sm:inline text-[10px] font-semibold px-2 py-0.5 rounded-full ${agent.badgeBg} ${agent.badgeFg}`}
+            <button
+              type="button"
+              className="ml-auto touch-target flex items-center justify-center text-paper-400 active:text-paper-700"
+              aria-label="Play reply"
+              onClick={() => void speakReply(content, intent)}
             >
-              {agent.specialty}
-            </span>
+              <Volume2 size={14} />
+            </button>
           </div>
         )}
 
         <div
-          className={`max-w-[85%] md:max-w-[65%] bg-white rounded-[22px] rounded-bl-[6px] px-4 py-3 shadow-card border-2 ${
-            agent ? agent.borderColor : 'border-paper-100'
-          } ${isError ? 'bg-rust-100 border-rust-400/30' : ''}`}
+          className={`max-w-[85%] md:max-w-[65%] bg-white rounded-[22px] rounded-bl-[6px] px-4 py-3 shadow-card border border-paper-200 ${
+            isError ? 'bg-rust-100 border-rust-400/30' : ''
+          }`}
         >
           {isThinking ? (
             <ThinkingDots />
@@ -166,7 +179,7 @@ function AssistantBubble({ message }: { message: Message }) {
 // ── Public export ─────────────────────────────────────────────────────────────
 export function MessageBubble({ message }: { message: Message }) {
   return message.role === 'user' ? (
-    <UserBubble content={message.content} />
+    <UserBubble message={message} />
   ) : (
     <AssistantBubble message={message} />
   )

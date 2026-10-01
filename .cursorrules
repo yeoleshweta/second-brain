@@ -18,10 +18,9 @@ You're helping build a personal multi-agent AI system. Always read `docs/archite
 - No secrets in code. `.env` only, gitignored.
 
 ## Agents
-Each agent in `backend/src/agents/<name>.py`:
-- `SYSTEM_PROMPT` constant
-- async `run(state)` function
-- Registered in `orchestrator/router.py` classifier
+Chat is one bot: `backend/src/agents/second_brain.py` (`SYSTEM_PROMPT` + async `run(state)`).
+The graph must not classify into leftover specialist files (knowledge/health/finance/calendar/career).
+Never write `01–05`, `Career/Profile/`, or `Context/`. Capture only via `append_to_inbox` (00-Inbox/Daily under ## Log, or Unsorted/).
 
 ## Frontend / Backend contract
 - All API routes under `/api/`

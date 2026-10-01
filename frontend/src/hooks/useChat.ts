@@ -142,6 +142,10 @@ export function useChat() {
       .slice(-10)
       .map((m) => ({ role: m.role, content: m.content }))
 
+    let finalContent = ''
+    let finalIntent: Intent | undefined
+    let finalStatus: Message['status'] = 'complete'
+
     try {
       let activeSessionId = sessionIdRef.current
 
@@ -154,15 +158,26 @@ export function useChat() {
           void refreshSessions()
         }
 
+        if (evt.event === 'user_message') {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === userMsg.id ? { ...m, content: evt.data } : m)),
+          )
+          continue
+        }
+
         setMessages((prev) =>
           prev.map((m) => {
             if (m.id !== assistantMsg.id) return m
             switch (evt.event) {
               case 'status':
+                finalStatus = 'thinking'
                 return { ...m, status: 'thinking' }
               case 'message':
+                finalContent += evt.data
+                finalStatus = 'complete'
                 return { ...m, content: m.content + evt.data, status: 'complete' }
               case 'intent':
+                finalIntent = evt.data as Intent
                 return { ...m, intent: evt.data as Intent }
               case 'digest_items':
                 try {
@@ -190,6 +205,8 @@ export function useChat() {
               case 'done':
                 return { ...m, status: 'complete' }
               case 'error':
+                finalStatus = 'error'
+                finalContent = `⚠️ ${evt.data}`
                 return {
                   ...m,
                   status: 'error',
@@ -203,14 +220,17 @@ export function useChat() {
       }
 
       void refreshSessions()
+      return { content: finalContent, intent: finalIntent, status: finalStatus }
     } catch (err) {
+      const content = `⚠️ ${(err as Error).message}`
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantMsg.id
-            ? { ...m, status: 'error', content: `⚠️ ${(err as Error).message}` }
+            ? { ...m, status: 'error', content }
             : m,
         ),
       )
+      return { content, status: 'error' as const }
     } finally {
       setSending(false)
     }

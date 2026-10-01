@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Calendar, RefreshCw, Users } from 'lucide-react'
 import { fetchChandlerAgenda, type AgendaEvent } from '@/lib/api'
-import { CharacterAvatarByAgentId } from '@/components/friends/CharacterAvatar'
 
 type Scope = 'today' | 'week'
 
@@ -73,11 +72,12 @@ export function Agenda() {
       <div className="shrink-0 px-4 md:px-6 pt-4 pb-3 border-b border-paper-200 bg-white/80 backdrop-blur-sm">
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <CharacterAvatarByAgentId agentId="calendar" size="md" framed />
+            <div className="w-10 h-10 rounded-xl bg-paper-800 text-paper-50 flex items-center justify-center shrink-0">
+              <Calendar size={18} />
+            </div>
             <div className="min-w-0">
-              <h1 className="text-lg font-bold text-paper-800 flex items-center gap-2">
-                <Calendar size={18} className="text-perk-500 shrink-0" />
-                Chandler&apos;s Agenda
+              <h1 className="text-lg font-bold text-paper-800">
+                Agenda
               </h1>
               <p className="text-xs text-paper-500 truncate">Google Calendar · person prep notes</p>
             </div>
@@ -132,7 +132,7 @@ export function Agenda() {
           {!loading && !error && connected && events.length === 0 && (
             <div className="rounded-2xl border border-paper-100 bg-white p-6 text-center shadow-card">
               <p className="text-sm text-paper-600 leading-relaxed">
-                {reply || 'Nothing scheduled. Ask Chandler in chat to add something.'}
+                {reply || 'Nothing scheduled.'}
               </p>
             </div>
           )}

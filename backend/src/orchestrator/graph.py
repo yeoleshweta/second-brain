@@ -1,16 +1,18 @@
-"""LangGraph orchestrator: classify intent, route to specialist agent."""
+"""LangGraph orchestrator: one bot → one vault daily note.
+
+Chat never classifies into leftover Friends specialists. Those agent files
+remain on disk unused by this graph.
+"""
 from __future__ import annotations
 
-import re
 from typing import Literal, TypedDict
 
 from langgraph.graph import END, StateGraph
 from loguru import logger
 
-from src.agents import calendar_agent, finance, health, knowledge
-from src.orchestrator.router import classify_intent
+from src.agents.second_brain import run as second_brain_run
 
-Intent = Literal["knowledge", "health", "finance", "calendar", "general"]
+Intent = Literal["knowledge", "health", "finance", "calendar", "career", "general"]
 
 
 class AgentState(TypedDict, total=False):
@@ -26,249 +28,23 @@ class AgentState(TypedDict, total=False):
     metadata: dict
 
 
-AGENT_NAME_TO_INTENT: dict[str, Intent] = {
-    "ross": "knowledge",
-    "monica": "health",
-    "chandler": "calendar",
-    "phoebe": "general",
-    "joey": "general",
-    "rachel": "general",
-}
-
-BROADCAST_REMEMBER_RE = re.compile(
-    r"\b(everyone|all)\b.*\b(remember|save|bookmark|note)\b",
-    re.IGNORECASE,
-)
-
-KEYWORD_INTENT_HINTS: dict[Intent, tuple[str, ...]] = {
-    "knowledge": (
-        "paper",
-        "papers",
-        "research",
-        "what's new",
-        "whats new",
-        "ai news",
-        "reading list",
-        "save in notes",
-        "bookmark",
-        "help me read",
-        "download",
-        "add to my reading list",
-        "verity",
-        "book",
-        "stcw",
-        "amendment",
-        "article",
-        "articles",
-    ),
-    "health": (
-        "meal",
-        "ate",
-        "workout",
-        "fitness",
-        "calories",
-        "nutrition",
-        "sleep",
-    ),
-    "finance": (
-        "spend",
-        "spent",
-        "budget",
-        "subscription",
-        "money",
-        "expense",
-        "finance",
-    ),
-    "calendar": (
-        "schedule",
-        "calendar",
-        "meeting",
-        "agenda",
-        "what's on today",
-        "whats on today",
-    ),
-    "general": (),
-}
-
-
-def _forced_intent_from_name(message: str) -> Intent | None:
-    lowered = message.lower()
-    earliest: tuple[int, Intent] | None = None
-    for name, intent in AGENT_NAME_TO_INTENT.items():
-        idx = lowered.find(name)
-        if idx == -1:
-            continue
-        # Require word boundary-like edges to avoid accidental substring matches.
-        before_ok = idx == 0 or not lowered[idx - 1].isalnum()
-        after_idx = idx + len(name)
-        after_ok = after_idx >= len(lowered) or not lowered[after_idx].isalnum()
-        if not (before_ok and after_ok):
-            continue
-        if earliest is None or idx < earliest[0]:
-            earliest = (idx, intent)
-    return earliest[1] if earliest else None
-
-
-def _keyword_fallback_intent(message: str) -> Intent | None:
-    lowered = message.lower()
-    for intent, words in KEYWORD_INTENT_HINTS.items():
-        if any(w in lowered for w in words):
-            return intent
-    return None
-
-
-def _last_assistant_intent(history: list[dict]) -> Intent | None:
-    for turn in reversed(history):
-        if turn.get("role") != "assistant":
-            continue
-        raw = (turn.get("intent") or "").strip().lower()
-        if raw in {"knowledge", "health", "finance", "calendar", "general"}:
-            return raw  # type: ignore[return-value]
-    return None
-
-
-def _explicit_switch_intent(message: str) -> Intent | None:
-    """User clearly asked for a different specialist."""
-    forced = _forced_intent_from_name(message)
-    if forced:
-        return forced
-    lowered = message.lower()
-    if any(
-        w in lowered
-        for w in (
-            "calories",
-            "workout",
-            "meal",
-            "nutrition",
-            "breakfast",
-            "lunch",
-            "dinner",
-            "macros",
-            "protein",
-        )
-    ):
-        return "health"
-    if any(
-        w in lowered
-        for w in ("budget", "subscription", "transaction", "spending", "expense")
-    ):
-        return "finance"
-    if any(w in lowered for w in ("schedule meeting", "calendar", "agenda", "my schedule")):
-        return "calendar"
-    if any(w in lowered for w in ("inbox", "unread email", "my email", "gmail", "check email")):
-        return "calendar"
-    return None
-
-
-def _apply_session_intent_sticky(
-    message: str,
-    history: list[dict],
-    classified: Intent,
-) -> Intent:
-    """Keep follow-ups with the same agent unless the user switches explicitly."""
-    prior = _last_assistant_intent(history)
-    if not prior:
-        return classified
-    explicit = _explicit_switch_intent(message)
-    if explicit and explicit != prior:
-        return explicit
-    if prior == "knowledge" and classified in {"general", "health"}:
-        return "knowledge"
-    if prior in {"health", "finance", "calendar"} and classified == "general":
-        return prior
-    return classified
-
-
 async def _classify_node(state: AgentState) -> dict:
-    message = state["user_message"]
-    history = state.get("chat_history") or []
-
-    # Any attachment → Ross (save to reading list + Obsidian vault).
-    if state.get("attachments"):
-        logger.info("Attachment present, routing to knowledge")
-        return {"intent": "knowledge"}
-
-    if BROADCAST_REMEMBER_RE.search(message):
-        # Route "everyone/all remember this ..." through Ross save flow so memory is captured once.
-        logger.info("Broadcast remember detected; routing to knowledge save flow")
-        return {"intent": "knowledge", "user_message": f"save in notes {message}"}
-
-    forced_intent = _forced_intent_from_name(message)
-    if forced_intent:
-        logger.info("Name override detected; routing to {}", forced_intent)
-        return {"intent": forced_intent}
-
-    intent = await classify_intent(message)
-    logger.info("Classified intent={}", intent)
-    if intent == "general":
-        fallback_intent = _keyword_fallback_intent(message)
-        if fallback_intent and fallback_intent != "general":
-            logger.info("Keyword fallback override: general -> {}", fallback_intent)
-            intent = fallback_intent
-    intent = _apply_session_intent_sticky(message, history, intent)
-    logger.info("Final routed intent={}", intent)
-    return {"intent": intent}
-
-
-def _route(state: AgentState) -> str:
-    return state.get("intent", "general")
+    """Chat is one bot. Always general — no specialist / Friends routing."""
+    del state
+    return {"intent": "general"}
 
 
 async def _general_node(state: AgentState) -> dict:
-    """Phoebe — general chat, wellness, ideas. Pure conversation, no Obsidian required."""
-    from openai import AsyncOpenAI
-
-    from src.config import get_settings
-
-    settings = get_settings()
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
-
-    system = (
-        "You are Phoebe, a warm and imaginative AI friend in the user's personal second-brain app. "
-        "You handle general conversation, offer creative ideas, wellbeing tips, meditation prompts, "
-        "and life inspiration. You're upbeat, a little quirky, and genuinely caring. "
-        "Keep replies concise and conversational — 1-3 short paragraphs at most. "
-        "Never pretend to have memory of past conversations unless context is provided."
-    )
-    try:
-        resp = await client.chat.completions.create(
-            model=settings.openai_model_cheap,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": state["user_message"]},
-            ],
-            max_tokens=512,
-        )
-        reply = resp.choices[0].message.content or "I'm here! What's on your mind?"
-    except Exception as exc:
-        logger.warning("Phoebe LLM error: {}", exc)
-        reply = "Hey! I'm Phoebe — here for general chat, ideas, and good vibes. What's on your mind? 🌙"
-
-    return {"reply": reply, "obsidian_path": None, "intent": "general"}
+    return await second_brain_run(state)
 
 
 def build_graph():
     graph = StateGraph(AgentState)
     graph.add_node("classify", _classify_node)
-    graph.add_node("knowledge", knowledge.run)
-    graph.add_node("health", health.run)
-    graph.add_node("finance", finance.run)
-    graph.add_node("calendar", calendar_agent.run)
     graph.add_node("general", _general_node)
     graph.set_entry_point("classify")
-    graph.add_conditional_edges(
-        "classify",
-        _route,
-        {
-            "knowledge": "knowledge",
-            "health": "health",
-            "finance": "finance",
-            "calendar": "calendar",
-            "general": "general",
-        },
-    )
-    for node in ("knowledge", "health", "finance", "calendar", "general"):
-        graph.add_edge(node, END)
+    graph.add_edge("classify", "general")
+    graph.add_edge("general", END)
     return graph.compile()
 
 
@@ -284,17 +60,47 @@ async def handle_message(
 ) -> AgentState:
     history = list(chat_history or [])
     if session_id and not history:
-        from src.storage import get_session
         from src.services import chat_history as chat_store
+        from src.storage import get_session
 
         with next(get_session()) as db:
             history = chat_store.recent_history(db, session_id, limit=20)
 
-    result = await APP.ainvoke(
-        {
-            "user_message": message,
-            "attachments": attachments or [],
+    from src.agents._base import is_inbox_thought_dump, try_obsidian_capture
+    from src.services.media_ingest import enrich_user_message
+
+    attachments = attachments or []
+    enriched = await enrich_user_message(message, attachments)
+    try:
+        result = await APP.ainvoke(
+            {
+                "user_message": enriched,
+                "attachments": attachments,
+                "chat_history": history,
+            }
+        )
+    except Exception as exc:
+        from src.integrations.openai_status import public_openai_error
+
+        logger.warning("Orchestrator failed: {}", type(exc).__name__)
+        result = {
+            "user_message": enriched,
+            "attachments": attachments,
             "chat_history": history,
+            "reply": public_openai_error(exc),
+            "intent": "general",
+            "obsidian_path": None,
         }
-    )
+
+    # Thought-dumps use the v1 contract: 00-Inbox/Daily/ under ## Log (or Unsorted).
+    if not result.get("obsidian_path") and is_inbox_thought_dump(enriched):
+        path = await try_obsidian_capture(enriched, "general")
+        if path:
+            result["obsidian_path"] = path
+            reply = (result.get("reply") or "").rstrip()
+            if path not in reply:
+                result["reply"] = f"{reply}\n\nSaved to `{path}`."
+
+    result["user_message"] = enriched
+    result["intent"] = "general"
     return result  # type: ignore[return-value]

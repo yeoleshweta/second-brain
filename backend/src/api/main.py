@@ -30,9 +30,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from loguru import logger
 from pydantic import BaseModel
 from sqlmodel import Session
@@ -113,6 +113,15 @@ _UPLOAD_TYPE_BY_EXT = {
     ".doc": "application/msword",
     ".rtf": "application/rtf",
     ".csv": "text/csv",
+    ".webm": "audio/webm",
+    ".m4a": "audio/mp4",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".ogg": "audio/ogg",
+    ".mp4": "audio/mp4",
+    ".aac": "audio/aac",
+    ".heic": "image/heic",
+    ".heif": "image/heif",
 }
 
 
@@ -182,7 +191,17 @@ class UserSettingsPatch(BaseModel):
 
 @app.get("/api/health")
 async def health() -> dict:
-    return {"status": "ok"}
+    from src.integrations.openai_status import key_health
+
+    return {"status": "ok", **key_health()}
+
+
+@app.get("/api/setup/openai", dependencies=[Depends(require_token)])
+async def openai_setup() -> dict:
+    """Live probe: does OPENAI_API_KEY authenticate? Never returns the secret."""
+    from src.integrations.openai_status import probe_openai
+
+    return await probe_openai()
 
 
 @app.get("/api/chat/sessions", dependencies=[Depends(require_token)])
@@ -243,14 +262,6 @@ async def chat(req: ChatRequest, db: Annotated[Session, Depends(get_session)]):
             db_history = chat_store.recent_history(db, session_id, limit=20)
             history = db_history if db_history else req.chat_history
 
-            chat_store.append_message(
-                db,
-                session_id,
-                role="user",
-                content=req.message,
-            )
-            chat_store.maybe_set_title_from_first_message(db, chat_session, req.message)
-
             yield {"event": "status", "data": "thinking"}
             result = await handle_message(
                 req.message,
@@ -258,6 +269,17 @@ async def chat(req: ChatRequest, db: Annotated[Session, Depends(get_session)]):
                 history,
                 session_id=session_id,
             )
+
+            user_content = (result.get("user_message") or req.message or "").strip()
+            chat_store.append_message(
+                db,
+                session_id,
+                role="user",
+                content=user_content,
+            )
+            chat_store.maybe_set_title_from_first_message(db, chat_session, user_content)
+            if user_content and user_content != (req.message or "").strip():
+                yield {"event": "user_message", "data": user_content}
 
             reply = result.get("reply", "")
             intent = result.get("intent")
@@ -295,8 +317,10 @@ async def chat(req: ChatRequest, db: Annotated[Session, Depends(get_session)]):
             yield {"event": "intent", "data": intent or "general"}
             yield {"event": "done", "data": "1"}
         except Exception as e:
+            from src.integrations.openai_status import public_openai_error
+
             logger.exception("chat error")
-            yield {"event": "error", "data": str(e)}
+            yield {"event": "error", "data": public_openai_error(e)}
 
     return EventSourceResponse(stream())
 
@@ -307,7 +331,17 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
 @app.post("/api/upload", dependencies=[Depends(require_token)])
 async def upload(file: UploadFile = File(...)) -> dict:  # noqa: B008
     file_id = str(uuid.uuid4())
-    suffix = Path(file.filename or "").suffix
+    suffix = Path(file.filename or "").suffix.lower()
+    if not suffix:
+        guessed = {
+            "audio/webm": ".webm",
+            "audio/mp4": ".m4a",
+            "audio/mpeg": ".mp3",
+            "audio/wav": ".wav",
+            "audio/ogg": ".ogg",
+            "video/mp4": ".mp4",
+        }.get((file.content_type or "").split(";")[0].strip(), "")
+        suffix = guessed or ".bin"
     dest = UPLOAD_DIR / f"{file_id}{suffix}"
     content = await file.read()
     if len(content) > MAX_UPLOAD_BYTES:
@@ -325,6 +359,55 @@ async def upload(file: UploadFile = File(...)) -> dict:  # noqa: B008
         "media_type": media_type,
         "filename": file.filename or f"upload{suffix}",
     }
+
+
+class TranscribeRequest(BaseModel):
+    file_id: str
+
+
+@app.post("/api/transcribe", dependencies=[Depends(require_token)])
+async def transcribe_upload(body: TranscribeRequest) -> dict:
+    """Whisper-transcribe an uploaded audio file for the composer."""
+    from src.integrations.speech import transcribe_audio
+    from src.services.uploads import resolve_uploaded_file
+
+    path = resolve_uploaded_file(body.file_id)
+    if not path:
+        raise HTTPException(status_code=404, detail="upload not found")
+    try:
+        text = await transcribe_audio(path)
+    except Exception as exc:
+        from openai import AuthenticationError
+
+        from src.integrations.openai_status import public_openai_error
+
+        if isinstance(exc, AuthenticationError):
+            raise HTTPException(status_code=401, detail=public_openai_error(exc)) from exc
+        raise HTTPException(status_code=502, detail=public_openai_error(exc)) from exc
+    return {"text": text, "file_id": body.file_id}
+
+
+class SpeakRequest(BaseModel):
+    text: str
+    intent: str | None = None
+
+
+@app.post("/api/speak", dependencies=[Depends(require_token)])
+async def speak_text(body: SpeakRequest) -> Response:
+    """TTS for an agent reply. Character voice is chosen from intent."""
+    from src.integrations.speech import synthesize_speech
+
+    try:
+        audio = await synthesize_speech(body.text, intent=body.intent)
+    except Exception as exc:
+        from openai import AuthenticationError
+
+        from src.integrations.openai_status import public_openai_error
+
+        if isinstance(exc, AuthenticationError):
+            raise HTTPException(status_code=401, detail=public_openai_error(exc)) from exc
+        raise HTTPException(status_code=502, detail=public_openai_error(exc)) from exc
+    return Response(content=audio, media_type="audio/mpeg")
 
 
 # ── Reading list endpoints ─────────────────────────────────────────────────────
@@ -857,6 +940,82 @@ async def plaid_unlink_item(
 
     pi.delete_item(session, item_id)
     return {"ok": True}
+
+
+# ── Google OAuth web flow ────────────────────────────────────────────────────
+
+
+def _google_callback_url(request: Request) -> str:
+    """Return the absolute OAuth callback URL.
+
+    Prefers BACKEND_URL env var (set on Render) so the scheme is always https://.
+    Falls back to request.base_url for local dev.
+    """
+    import os
+    base = os.environ.get("BACKEND_URL", "").rstrip("/")
+    if not base:
+        base = str(request.base_url).rstrip("/")
+    return f"{base}/api/auth/google/callback"
+
+
+@app.get("/api/auth/google/start", dependencies=[Depends(require_token)])
+async def google_auth_start(request: Request) -> dict:
+    """Kick off Google OAuth. Returns an authorization_url the frontend should open."""
+    from src.integrations.google_auth import build_oauth_flow
+
+    callback_url = _google_callback_url(request)
+    try:
+        flow = build_oauth_flow(redirect_uri=callback_url)
+        auth_url, state = flow.authorization_url(
+            access_type="offline",
+            include_granted_scopes="true",
+            prompt="consent",
+        )
+        return {"authorization_url": auth_url, "state": state}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/auth/google/callback")
+async def google_auth_callback(request: Request) -> Response:
+    """Handle Google's redirect, store token in DB, redirect to frontend."""
+    from src.integrations.google_auth import _save_to_db, build_oauth_flow
+    from src.storage.models import UserConfig
+
+    callback_url = _google_callback_url(request)
+    try:
+        flow = build_oauth_flow(redirect_uri=callback_url)
+        flow.fetch_token(authorization_response=str(request.url))
+        creds = flow.credentials
+        _save_to_db(creds)
+        logger.info("Google OAuth token saved to DB via web flow")
+    except Exception as exc:
+        logger.error("Google OAuth callback failed: {}", exc)
+        return Response(
+            content=f"<html><body><h2>Google auth failed</h2><pre>{exc}</pre>"
+            "<p><a href='/'>Back to app</a></p></body></html>",
+            media_type="text/html",
+            status_code=400,
+        )
+
+    frontend = settings.frontend_origin or "/"
+    return Response(
+        content=(
+            f"<html><head><meta http-equiv='refresh' content='2;url={frontend}'></head>"
+            "<body><h2>✅ Google account connected!</h2>"
+            "<p>Redirecting back to your app…</p></body></html>"
+        ),
+        media_type="text/html",
+    )
+
+
+@app.get("/api/auth/google/status", dependencies=[Depends(require_token)])
+async def google_auth_status() -> dict:
+    """Check whether a Google token is available."""
+    from src.integrations.google_auth import load_google_credentials
+
+    creds = load_google_credentials()
+    return {"connected": creds is not None and creds.valid}
 
 
 # ── Apple Books sync endpoint ────────────────────────────────────────────────

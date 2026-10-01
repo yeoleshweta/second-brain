@@ -22,8 +22,6 @@ from src.storage import get_session, init_db
 if TYPE_CHECKING:
     from src.orchestrator.graph import AgentState
 
-WORKOUT_DIR = "02-Health/Workouts"
-
 MONICA_CHAT_SYSTEM = (
     "You are Monica Geller from Friends — reimagined as the user's nutritionist "
     "and personal trainer in their second-brain app.\n\n"
@@ -142,29 +140,16 @@ async def handle_log_food(msg: str, session: Session) -> dict:
 
 
 async def handle_log_workout(msg: str, session: Session) -> dict:
-    del session  # workouts are Obsidian-only for now
-    today = date.today().isoformat()
-    path = f"{WORKOUT_DIR}/{today}.md"
-    ts = datetime.now().strftime("%H:%M")
-    line = f"- **{ts}** {msg.strip()}\n"
-
+    del session  # workouts are vault captures (00-Inbox/Daily ## Log)
     try:
         async with ObsidianClient() as obs:
-            try:
-                existing = await obs.get_note(path)
-                if "## Workouts" in existing:
-                    updated = existing.rstrip() + "\n" + line
-                else:
-                    updated = existing.rstrip() + f"\n\n## Workouts\n{line}"
-            except Exception:
-                updated = f"# Workout log — {today}\n\n## Workouts\n{line}"
-            await obs.create_note(path, updated)
+            path = await obs.append_to_inbox(msg, source="user")
     except Exception as exc:
-        logger.warning("Workout mirror failed: {}", exc)
+        logger.warning("Workout capture failed: {}", type(exc).__name__)
         return {
             "reply": (
-                "🥗 I noted your workout in chat, but couldn't reach Obsidian. "
-                "Is the Local REST API running?"
+                "🥗 I noted your workout in chat, but couldn't write it to the vault. "
+                "Check that OBSIDIAN_VAULT_PATH is set and writable."
             ),
             "intent": "health",
         }

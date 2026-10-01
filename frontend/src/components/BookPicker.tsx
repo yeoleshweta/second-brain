@@ -108,7 +108,7 @@ export function BookPicker({ items }: Props) {
                     variant={isOcean ? 'primary' : 'secondary'}
                     hint={
                       isOcean
-                        ? 'Leaves Central Perk and opens Safari so you can download there.'
+                        ? 'Opens Safari so you can download there.'
                         : undefined
                     }
                   />

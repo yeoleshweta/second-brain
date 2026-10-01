@@ -39,7 +39,7 @@ def build_oceanofpdf_book_item(query: str, match: OceanOfPdfMatch) -> dict:
     if match.is_search:
         summary = (
             f"Search Ocean of PDF for **{display}**. "
-            "Tap **Open in Safari** — leaves Central Perk so you can download there."
+            "Tap **Open in Safari** to download there."
         )
     else:
         summary = (
@@ -70,7 +70,7 @@ def format_book_not_found_alternatives(
     """Markdown block with next-step links for unavailable titles."""
     lines = [
         f"\n\n**No free in-app download for «{query}».** "
-        "Ross checked Gutenberg, Open Library, and LibriVox.",
+        "Checked Gutenberg, Open Library, and LibriVox.",
         "\n**Legal options:**",
     ]
     for name, url, note in legal_discovery_links(query):

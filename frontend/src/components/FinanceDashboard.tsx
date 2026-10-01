@@ -8,7 +8,6 @@ import {
   type FinanceSummary,
   type Transaction,
 } from '@/lib/api'
-import { CharacterAvatarByAgentId } from '@/components/friends/CharacterAvatar'
 
 type Period = 'week' | 'month' | 'last_month' | 'year'
 
@@ -174,7 +173,9 @@ export default function FinanceDashboard() {
     <div className="flex flex-col h-full overflow-hidden bg-friends-cream/30">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 pt-4 pb-2 shrink-0">
-        <CharacterAvatarByAgentId agentId="finance" size="sm" />
+        <div className="w-8 h-8 rounded-xl bg-paper-800 text-paper-50 flex items-center justify-center shrink-0">
+          <DollarSign size={16} />
+        </div>
         <div className="flex-1 min-w-0">
           <h2 className="text-base font-bold text-paper-800 leading-tight">Finance</h2>
           <p className="text-xs text-paper-400">Powered by Plaid · read-only</p>

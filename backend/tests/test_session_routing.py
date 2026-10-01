@@ -14,7 +14,6 @@ from src.agents.knowledge import (
     is_topic_search_command,
 )
 from src.integrations.knowledge_sources import KnowledgeItem
-from src.orchestrator.graph import _apply_session_intent_sticky
 
 
 def test_stcw_question_not_generic_digest() -> None:
@@ -27,31 +26,6 @@ def test_extract_stcw_topic() -> None:
     topic = _extract_search_topic("What are the latest amendments to STCW code?")
     assert topic is not None
     assert "stcw" in topic.lower()
-
-
-def test_session_stickiness_keeps_ross() -> None:
-    history = [
-        {"role": "user", "content": "suggest me things to read"},
-        {"role": "assistant", "content": "Here are picks", "intent": "knowledge"},
-    ]
-    intent = _apply_session_intent_sticky(
-        "Show me what ThrustSSC looks like?",
-        history,
-        "general",
-    )
-    assert intent == "knowledge"
-
-
-def test_session_stickiness_allows_explicit_monica() -> None:
-    history = [
-        {"role": "assistant", "content": "Saved.", "intent": "knowledge"},
-    ]
-    intent = _apply_session_intent_sticky(
-        "Monica I had eggs for breakfast",
-        history,
-        "general",
-    )
-    assert intent == "health"
 
 
 def test_topic_from_history_on_follow_up() -> None:

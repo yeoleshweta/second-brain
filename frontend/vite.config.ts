@@ -32,9 +32,9 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
       manifest: {
-        name: 'Central Perk',
-        short_name: 'centralperk',
-        description: 'Your Friends-themed personal AI second brain.',
+        name: 'Second Brain',
+        short_name: 'Second Brain',
+        description: 'One chat, one vault, one daily note.',
         start_url: '/',
         display: 'standalone',
         background_color: '#FAF0E4',

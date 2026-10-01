@@ -48,7 +48,7 @@ export function RecentChats({
 
       {sessions.length === 0 ? (
         <p className="text-[11px] text-paper-400 px-2 py-1 italic">
-          No past chats yet — say hi to Ross!
+          No past chats yet — start with “remember this…”
         </p>
       ) : (
         <div className={`space-y-1 ${compact ? 'max-h-48 overflow-y-auto' : ''}`}>

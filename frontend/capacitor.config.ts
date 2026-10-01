@@ -4,7 +4,7 @@ const isCloud = !!process.env.CAPACITOR_SERVER_URL
 
 const config: CapacitorConfig = {
   appId: 'com.secondbrain.centralperk',
-  appName: 'Central Perk',
+  appName: 'Second Brain',
   webDir: 'dist',
 
   // In dev: live-reload from the running Vite dev server.

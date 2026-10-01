@@ -40,6 +40,26 @@ function authHeaders(): HeadersInit {
 }
 
 /**
+ * Generic authenticated fetch helper. Throws on non-2xx responses.
+ * Used by components that need ad-hoc API calls (SetupBanner, SettingsView, etc.)
+ */
+export async function apiFetch<T = unknown>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const res = await fetch(`${resolveApiBase()}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+      ...(options.headers ?? {}),
+    },
+  })
+  if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`)
+  return res.json() as Promise<T>
+}
+
+/**
  * Send a chat message and yield streamed SSE events.
  */
 export async function* streamChat(
@@ -190,6 +210,43 @@ export async function uploadFile(file: File): Promise<Attachment> {
     mediaType: data.media_type,
     size: data.size,
   }
+}
+
+export async function transcribeUpload(fileId: string): Promise<string> {
+  const res = await fetch(`${resolveApiBase()}/api/transcribe`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ file_id: fileId }),
+  })
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { detail?: string }
+    throw new Error(typeof body.detail === 'string' ? body.detail : `Transcribe failed: ${res.status}`)
+  }
+  const data = (await res.json()) as { text?: string }
+  return (data.text || '').trim()
+}
+
+export async function fetchSpeechAudio(text: string, intent?: string | null): Promise<Blob> {
+  const resp = await fetch(`${resolveApiBase()}/api/speak`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ text, intent: intent || null }),
+  })
+  if (!resp.ok) {
+    const body = (await resp.json().catch(() => ({}))) as { detail?: string }
+    throw new Error(typeof body.detail === 'string' ? body.detail : `Speak failed: ${resp.status}`)
+  }
+  return resp.blob()
+}
+
+export async function probeOpenAi(): Promise<{ ok: boolean; code: string }> {
+  return apiFetch('/api/setup/openai')
 }
 
 export async function getPlaidLinkToken(): Promise<string> {
