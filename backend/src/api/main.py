@@ -2,6 +2,11 @@
 
 Endpoints:
   POST /api/chat                   — send a message, stream agent response via SSE
+  GET  /api/wiki/pending           — Inbox notes waiting for human review
+  POST /api/wiki/ingest            — paste meeting/clip into Inbox + draft proposal
+  POST /api/wiki/propose           — Claude drafts a filing (does not write wiki folders)
+  POST /api/wiki/approve           — human files the proposal
+  POST /api/wiki/reject            — human declines
   POST /api/upload                 — upload a file (receipt etc.), returns file_id
   GET  /api/health                 — liveness
   GET  /api/reading-list           — list active reading list items + stats
@@ -23,6 +28,7 @@ Run:
 """
 from __future__ import annotations
 
+import asyncio
 import re
 import sys
 import uuid
@@ -47,6 +53,8 @@ from src.services import chat_history as chat_store
 from src.services import reading_list as rl
 from src.services import usage as usage_service
 from src.services import user_config
+from src.services import wiki as wiki_service
+from src.services.vault_layout import ensure_v1_tree
 from src.storage import ReadingListItem, get_session, init_db
 from src.storage.models import ItemKind, ItemStatus
 
@@ -66,6 +74,7 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
+    ensure_v1_tree(settings.obsidian_vault_path)
     start_scheduler()
     try:
         yield
@@ -153,6 +162,21 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
 
 
+class WikiIngestRequest(BaseModel):
+    title: str
+    body: str
+    source: str = "upload"
+
+
+class WikiApproveRequest(BaseModel):
+    path: str
+    destination: str | None = None
+
+
+class WikiPathRequest(BaseModel):
+    path: str
+
+
 class ReadingListAddRequest(BaseModel):
     url: str | None = None
     title: str
@@ -191,9 +215,10 @@ class UserSettingsPatch(BaseModel):
 
 @app.get("/api/health")
 async def health() -> dict:
+    from src.integrations.claude import key_health as claude_health
     from src.integrations.openai_status import key_health
 
-    return {"status": "ok", **key_health()}
+    return {"status": "ok", **key_health(), **claude_health()}
 
 
 @app.get("/api/setup/openai", dependencies=[Depends(require_token)])
@@ -202,6 +227,75 @@ async def openai_setup() -> dict:
     from src.integrations.openai_status import probe_openai
 
     return await probe_openai()
+
+
+@app.get("/api/setup/claude", dependencies=[Depends(require_token)])
+async def claude_setup() -> dict:
+    """Live probe: does ANTHROPIC_API_KEY authenticate? Never returns the secret."""
+    from src.integrations.claude import probe_claude
+
+    return await probe_claude()
+
+
+@app.get("/api/wiki/pending", dependencies=[Depends(require_token)])
+async def wiki_pending() -> dict:
+    items = await wiki_service.list_pending()
+    return {"items": items, "count": len(items)}
+
+
+@app.get("/api/wiki/item", dependencies=[Depends(require_token)])
+async def wiki_item(path: str) -> dict:
+    try:
+        return await wiki_service.get_item(path)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/wiki/ingest", dependencies=[Depends(require_token)])
+async def wiki_ingest(req: WikiIngestRequest) -> dict:
+    path = await wiki_service.ingest_raw(
+        title=req.title,
+        body=req.body,
+        source=req.source or "upload",
+    )
+    try:
+        proposal = await wiki_service.propose(path)
+        return {"path": path, **proposal}
+    except Exception as exc:
+        logger.warning("wiki ingest propose failed: {}", type(exc).__name__)
+        return {
+            "path": path,
+            "status": "inbox",
+            "detail": "Saved to Inbox. Proposal failed — retry from Review.",
+        }
+
+
+@app.post("/api/wiki/propose", dependencies=[Depends(require_token)])
+async def wiki_propose(req: WikiPathRequest) -> dict:
+    try:
+        return await wiki_service.propose(req.path)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/wiki/approve", dependencies=[Depends(require_token)])
+async def wiki_approve(req: WikiApproveRequest) -> dict:
+    try:
+        return await wiki_service.approve(req.path, req.destination)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/wiki/reject", dependencies=[Depends(require_token)])
+async def wiki_reject(req: WikiPathRequest) -> dict:
+    try:
+        return await wiki_service.reject(req.path)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/chat/sessions", dependencies=[Depends(require_token)])
@@ -292,6 +386,15 @@ async def chat(req: ChatRequest, db: Annotated[Session, Depends(get_session)]):
                 extra["bookItems"] = result["book_items"]
             if result.get("obsidian_path"):
                 extra["obsidianPath"] = result["obsidian_path"]
+                inbox_path = result["obsidian_path"]
+
+                async def _propose_later(path: str = inbox_path) -> None:
+                    try:
+                        await wiki_service.propose(path)
+                    except Exception as exc:
+                        logger.warning("background wiki propose failed: {}", type(exc).__name__)
+
+                asyncio.create_task(_propose_later())
 
             chat_store.append_message(
                 db,
@@ -980,7 +1083,6 @@ async def google_auth_start(request: Request) -> dict:
 async def google_auth_callback(request: Request) -> Response:
     """Handle Google's redirect, store token in DB, redirect to frontend."""
     from src.integrations.google_auth import _save_to_db, build_oauth_flow
-    from src.storage.models import UserConfig
 
     callback_url = _google_callback_url(request)
     try:

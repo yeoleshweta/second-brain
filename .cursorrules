@@ -1,12 +1,14 @@
-# Cursor Rules — Second Brain
+# Cursor Rules — Second Brain (v2 LLM Wiki)
 
-You're helping build a personal multi-agent AI system. Always read `docs/architecture.md` before non-trivial changes.
+You're helping build a personal LLM Wiki: chat + multi-input capture into an Obsidian vault, with Claude filing and linking. Always read `docs/architecture.md` before non-trivial changes.
+
+v1 (phrase-only capture, keyword types, never write beyond Inbox Daily) is **retired**. Do not follow `docs/research-plan.md` as a block on filing. The product is the article-style processor: Inbox → Notes/People/Projects/Concepts + `[[wiki-links]]` + briefings.
 
 ## Stack
-- Backend: Python 3.11+, FastAPI, LangGraph, Anthropic Claude
-- Frontend: React + Vite + TypeScript + Tailwind
-- Integrations via MCP wherever practical
-- Single-user, local-only (Mac), no multi-tenancy needed
+- Backend: Python 3.11+, FastAPI, LangGraph, Claude (chat + wiki). Whisper (OpenAI) for STT only.
+- Frontend: React + Vite + TypeScript + Tailwind. Phone = Safari PWA, not App Store.
+- Integrations via MCP wherever practical.
+- Single-user. Canonical vault is the Mac folder (`OBSIDIAN_VAULT_PATH`).
 
 ## Conventions
 - Backend: type hints everywhere. Run `ruff check` before committing.
@@ -17,10 +19,11 @@ You're helping build a personal multi-agent AI system. Always read `docs/archite
 - Logging via `loguru` on backend. No `print()` in src/.
 - No secrets in code. `.env` only, gitignored.
 
-## Agents
-Chat is one bot: `backend/src/agents/second_brain.py` (`SYSTEM_PROMPT` + async `run(state)`).
-The graph must not classify into leftover specialist files (knowledge/health/finance/calendar/career).
-Never write `01–05`, `Career/Profile/`, or `Context/`. Capture only via `append_to_inbox` (00-Inbox/Daily under ## Log, or Unsorted/).
+## Agents / vault
+Chat is one bot: `backend/src/agents/second_brain.py` (Claude + async `run(state)`).
+The graph must not route into leftover specialist files (knowledge/health/finance/calendar/career).
+**Ingest path:** every user turn and every adapter writes `Inbox/` with `status: inbox`.
+**Review path:** Claude may only set `status: proposed` on that Inbox file. `Notes/`, `People/`, `Projects/`, `Concepts/`, `Briefings/` are written **only** after an explicit approve API/UI action. Failures → `99-System/Logs/`. Do not write legacy `00–05`, `Career/Profile/`, or `Context/`.
 
 ## Frontend / Backend contract
 - All API routes under `/api/`
@@ -29,12 +32,13 @@ Never write `01–05`, `Career/Profile/`, or `Context/`. Capture only via `appen
 - Bearer token auth: header `Authorization: Bearer <APP_API_TOKEN>`
 
 ## Security
-- Finance agent: READ ONLY. Never moves money.
-- Confirmation gate for any action that sends external messages, creates calendar events, etc.
+- Finance leftovers: READ ONLY. Never moves money.
+- Confirmation gate for sending external messages or creating calendar events.
 - Plaid access_tokens stored encrypted at rest.
 - Don't log full secrets — `{t[:4]}...{t[-4:]}` only.
+- Claude API sees vault text you send it; don't log prompt bodies in full.
 
 ## When in doubt
 - Ask before adding deps.
-- Ask before introducing a new external service.
+- Ask before introducing a new external service (Fireflies, Otter, etc.).
 - Ask before changing `src/storage/models.py` (data model is sensitive).

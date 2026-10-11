@@ -7,12 +7,12 @@ const NEW_CHAT_SENTINEL = '__new__'
 const API_TOKEN = import.meta.env.VITE_API_TOKEN || 'change-me-to-a-long-random-string'
 
 function resolveApiBase(): string {
-  // 1. Explicit env var always wins (set for cloud/Railway builds).
+  // 1. Explicit env var always wins (only if the API is on another host).
   const configured = import.meta.env.VITE_API_URL
   if (configured) return configured.replace(/\/$/, '')
 
   // 2. Capacitor native app: window.location is capacitor://localhost — no Vite proxy.
-  //    We need a real URL. In dev: VITE_API_URL should point at Tailscale / Railway URL.
+  //    We need a real URL. In production set VITE_API_URL only if the API is not same-origin.
   //    In production Capacitor build this must be set.
   const scheme = window.location.protocol
   if (scheme === 'capacitor:' || scheme === 'ionic:') {
@@ -27,7 +27,8 @@ function resolveApiBase(): string {
     return `${scheme}//${host}:8000`
   }
 
-  // 4. Tailscale / LAN access: use same-origin proxy (/api → backend).
+  // 4. Vercel production: same-origin `/api` serverless (leave VITE_API_URL unset).
+  // 5. Tailscale / LAN / Vite preview: same-origin proxy (/api → backend).
   return ''
 }
 
@@ -247,6 +248,61 @@ export async function fetchSpeechAudio(text: string, intent?: string | null): Pr
 
 export async function probeOpenAi(): Promise<{ ok: boolean; code: string }> {
   return apiFetch('/api/setup/openai')
+}
+
+export async function probeClaude(): Promise<{ ok: boolean; code: string }> {
+  return apiFetch('/api/setup/claude')
+}
+
+export interface WikiPendingItem {
+  path: string
+  title: string
+  status: string
+  source: string
+  destination: string
+  summary: string
+  raw_excerpt: string
+  proposed_excerpt: string
+  raw?: string
+  proposed?: string
+  date_created: string
+}
+
+export async function listWikiPending(): Promise<WikiPendingItem[]> {
+  const data = await apiFetch<{ items: WikiPendingItem[] }>('/api/wiki/pending')
+  return data.items
+}
+
+export async function ingestWikiNote(input: {
+  title: string
+  body: string
+  source: string
+}): Promise<{ path: string; status?: string }> {
+  return apiFetch('/api/wiki/ingest', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function proposeWikiItem(path: string): Promise<unknown> {
+  return apiFetch('/api/wiki/propose', {
+    method: 'POST',
+    body: JSON.stringify({ path }),
+  })
+}
+
+export async function approveWikiItem(path: string, destination?: string): Promise<unknown> {
+  return apiFetch('/api/wiki/approve', {
+    method: 'POST',
+    body: JSON.stringify({ path, destination: destination || null }),
+  })
+}
+
+export async function rejectWikiItem(path: string): Promise<unknown> {
+  return apiFetch('/api/wiki/reject', {
+    method: 'POST',
+    body: JSON.stringify({ path }),
+  })
 }
 
 export async function getPlaidLinkToken(): Promise<string> {

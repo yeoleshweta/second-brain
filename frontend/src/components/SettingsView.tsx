@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getRossSettings, getTodayUsage, patchRossSettings, apiFetch, probeOpenAi, type RossSettings } from '@/lib/api'
+import { getRossSettings, getTodayUsage, patchRossSettings, apiFetch, probeOpenAi, probeClaude, type RossSettings } from '@/lib/api'
 import { PlaidConnectSection } from '@/components/PlaidConnect'
 import { Mail, CheckCircle, AlertCircle, BookOpen, CalendarDays, DollarSign } from 'lucide-react'
 import { isVoiceRepliesEnabled, setVoiceRepliesEnabled } from '@/lib/voice'
@@ -12,8 +12,8 @@ function GoogleConnectSection() {
   const [starting, setStarting] = useState(false)
 
   useEffect(() => {
-    apiFetch('/api/auth/google/status')
-      .then((d: { connected: boolean }) => setStatus(d.connected ? 'connected' : 'disconnected'))
+    apiFetch<{ connected: boolean }>('/api/auth/google/status')
+      .then((d) => setStatus(d.connected ? 'connected' : 'disconnected'))
       .catch(() => setStatus('disconnected'))
   }, [])
 
@@ -76,6 +76,46 @@ function asBool(v: string | undefined): boolean {
   return (v || '').toLowerCase() === 'true'
 }
 
+function ClaudeKeyCard() {
+  const [state, setState] = useState<'loading' | 'ok' | 'invalid' | 'error'>('loading')
+  const [code, setCode] = useState<string>('')
+
+  useEffect(() => {
+    probeClaude()
+      .then((d) => {
+        setCode(d.code)
+        const bad = ['invalid_api_key', 'missing', 'malformed', 'billing']
+        setState(d.ok ? 'ok' : bad.includes(d.code) ? 'invalid' : 'error')
+      })
+      .catch(() => {
+        setState('error')
+        setCode('unreachable')
+      })
+  }, [])
+
+  return (
+    <div className="bg-white border border-paper-200 rounded-2xl p-4 space-y-2">
+      <h3 className="text-sm font-semibold text-paper-700">Claude</h3>
+      {state === 'loading' && <p className="text-xs text-paper-400">Checking API key…</p>}
+      {state === 'ok' && (
+        <p className="text-xs text-sage-600 bg-sage-50 px-3 py-2 rounded-xl">
+          Key works — chat and wiki drafts use Claude. Filing still waits for Review.
+        </p>
+      )}
+      {state === 'invalid' && (
+        <p className="text-xs text-paper-600 leading-relaxed">
+          {code === 'billing'
+            ? 'Claude key is valid but the Anthropic account has no API credits. Add billing at console.anthropic.com, then retry Review.'
+            : <>Anthropic rejected <span className="font-mono">ANTHROPIC_API_KEY</span> ({code}). Add a key in <span className="font-mono"> backend/.env</span> and restart.</>}
+        </p>
+      )}
+      {state === 'error' && (
+        <p className="text-xs text-paper-500">Could not reach Anthropic ({code}).</p>
+      )}
+    </div>
+  )
+}
+
 function OpenAiKeyCard() {
   const [state, setState] = useState<'loading' | 'ok' | 'invalid' | 'error'>('loading')
   const [code, setCode] = useState<string>('')
@@ -98,7 +138,7 @@ function OpenAiKeyCard() {
       {state === 'loading' && <p className="text-xs text-paper-400">Checking API key…</p>}
       {state === 'ok' && (
         <p className="text-xs text-sage-600 bg-sage-50 px-3 py-2 rounded-xl">
-          Key works — chat, Whisper, and spoken replies can reach OpenAI.
+          Key works — Whisper and spoken replies still use OpenAI.
         </p>
       )}
       {state === 'invalid' && (
@@ -219,6 +259,7 @@ export function SettingsView({ onOpenView }: { onOpenView?: (view: AppView) => v
         )}
 
         <h3 className="text-xs font-bold text-paper-400 uppercase tracking-widest px-1">Voice</h3>
+        <ClaudeKeyCard />
         <OpenAiKeyCard />
         <VoiceRepliesToggle />
 

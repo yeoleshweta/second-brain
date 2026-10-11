@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { MessageCircle, X, Scroll, Settings, History, Brain } from 'lucide-react'
+import { MessageCircle, X, Scroll, Settings, History, Brain, Inbox } from 'lucide-react'
 import { Sidebar } from '@/components/Sidebar'
-import { SetupBanner } from '@/components/SetupBanner'
 import { MessageBubble } from '@/components/MessageBubble'
 import { useChat } from '@/hooks/useChat'
 import { useVoiceCall } from '@/hooks/useVoiceCall'
@@ -11,9 +10,10 @@ import { ReadingList } from '@/components/ReadingList'
 import { Agenda } from '@/components/Agenda'
 import FinanceDashboard from '@/components/FinanceDashboard'
 import { SettingsView } from '@/components/SettingsView'
+import { ReviewInbox } from '@/components/ReviewInbox'
 import { RecentChats } from '@/components/RecentChats'
 import { BrandHeader } from '@/components/BrandHeader'
-import { getMorningBriefLatest } from '@/lib/api'
+import { getMorningBriefLatest, listWikiPending } from '@/lib/api'
 import { isVoiceRepliesEnabled, speakReply } from '@/lib/voice'
 import { CAPTURE_HINTS } from '@/agents'
 import type { AppView, Attachment } from '@/types'
@@ -62,10 +62,10 @@ function EmptyState({
         Second Brain
       </h1>
       <p className="mt-2 text-sm text-paper-500 max-w-sm leading-relaxed">
-        One chat, one vault. Talk, or start with “remember this…” to append today’s daily note in Inbox.
+        One chat, one vault. Talk, paste a meeting, or take a photo. Everything waits in Review before it is filed.
       </p>
       <p className="mt-2 text-[11px] text-paper-400 font-mono">
-        00-Inbox/Daily
+        Inbox → you approve → Notes / People / Projects / Concepts
       </p>
       <div className="mt-6 flex flex-wrap justify-center gap-2">
         {CAPTURE_HINTS.map(({ label, prompt }) => (
@@ -99,7 +99,8 @@ function MobileHeader({
     view === 'reading' ? 'Reading'
     : view === 'agenda' ? 'Agenda'
     : view === 'finance' ? 'Finance'
-    : view === 'settings' ? 'Settings'
+    :     view === 'settings' ? 'Settings'
+    : view === 'review' ? 'Review'
     : null
   return (
     <header className="md:hidden shrink-0 bg-white/95 backdrop-blur-md border-b border-paper-200 flex items-center justify-between px-4 py-2 pt-safe min-h-[48px] sticky top-0 z-20">
@@ -128,9 +129,18 @@ function MobileHeader({
 }
 
 // ── Bottom nav (mobile) ───────────────────────────────────────────────────────
-function BottomNav({ view, onChange }: { view: View; onChange: (v: View) => void }) {
+function BottomNav({
+  view,
+  onChange,
+  reviewCount = 0,
+}: {
+  view: View
+  onChange: (v: View) => void
+  reviewCount?: number
+}) {
   const tabs: { id: View; icon: React.ReactNode; label: string }[] = [
     { id: 'chat',     icon: <MessageCircle size={20} />, label: 'Chat'     },
+    { id: 'review',   icon: <Inbox size={20} />,         label: 'Review'   },
     { id: 'settings', icon: <Settings size={20} />,      label: 'Settings' },
   ]
   return (
@@ -143,8 +153,13 @@ function BottomNav({ view, onChange }: { view: View; onChange: (v: View) => void
             view === id ? 'text-paper-800' : 'text-paper-400'
           }`}
         >
-          <span className={`transition ${view === id ? 'text-paper-800' : 'text-paper-400'}`}>
+          <span className={`relative transition ${view === id ? 'text-paper-800' : 'text-paper-400'}`}>
             {icon}
+            {id === 'review' && reviewCount > 0 && (
+              <span className="absolute -top-1 -right-2 min-w-[14px] h-[14px] px-0.5 rounded-full bg-amber-500 text-white text-[9px] leading-[14px]">
+                {reviewCount}
+              </span>
+            )}
           </span>
           {label}
         </button>
@@ -173,6 +188,7 @@ function App() {
   const spokenIdRef = useRef<string | null>(null)
   const [briefContent, setBriefContent] = useState<string | null>(null)
   const [briefDismissed, setBriefDismissed] = useState(false)
+  const [reviewCount, setReviewCount] = useState(0)
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -200,6 +216,24 @@ function App() {
       .then((d) => { if (d.content) setBriefContent(d.content) })
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadCount() {
+      try {
+        const rows = await listWikiPending()
+        if (!cancelled) setReviewCount(rows.length)
+      } catch {
+        if (!cancelled) setReviewCount(0)
+      }
+    }
+    void loadCount()
+    const timer = window.setInterval(() => { void loadCount() }, 15000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [view])
 
   // Keep chat scrolled when iOS keyboard opens
   useEffect(() => {
@@ -256,6 +290,7 @@ function App() {
         activeSessionId={sessionId}
         onSelectSession={handleSelectSession}
         onNewChat={handleNewChat}
+        reviewCount={reviewCount}
       />
 
       {/* Main column */}
@@ -289,7 +324,20 @@ function App() {
                   <p className="text-sm text-paper-400 text-center py-8">Loading your chats…</p>
                 ) : (
                   <>
-                <SetupBanner onGoToSettings={() => setView('settings')} />
+                {reviewCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setView('review')}
+                    className="w-full mb-4 text-left bg-amber-50 border border-amber-200 rounded-2xl p-3.5"
+                  >
+                    <p className="text-xs font-semibold text-amber-900">
+                      {reviewCount} note{reviewCount === 1 ? '' : 's'} waiting in Review
+                    </p>
+                    <p className="text-[11px] text-amber-800 mt-0.5">
+                      Approve to file into the wiki. Nothing is added until you say yes.
+                    </p>
+                  </button>
+                )}
                 {showBanner && (
                   <BriefBanner
                     content={briefContent}
@@ -334,6 +382,10 @@ function App() {
               </div>
             </div>
           </>
+        ) : view === 'review' ? (
+          <div className="flex-1 overflow-hidden">
+            <ReviewInbox />
+          </div>
         ) : view === 'reading' ? (
           <div className="flex-1 overflow-hidden">
             <ReadingList />
@@ -353,7 +405,7 @@ function App() {
         )}
 
         {/* Mobile bottom nav */}
-        <BottomNav view={view} onChange={setView} />
+        <BottomNav view={view} onChange={setView} reviewCount={reviewCount} />
       </div>
     </div>
   )

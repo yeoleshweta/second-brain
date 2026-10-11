@@ -66,11 +66,21 @@ async def handle_message(
         with next(get_session()) as db:
             history = chat_store.recent_history(db, session_id, limit=20)
 
-    from src.agents._base import is_inbox_thought_dump, try_obsidian_capture
     from src.services.media_ingest import enrich_user_message
+    from src.services.wiki import ingest_raw, title_from_message
 
     attachments = attachments or []
     enriched = await enrich_user_message(message, attachments)
+    inbox_path: str | None = None
+    if (enriched or "").strip():
+        try:
+            inbox_path = await ingest_raw(
+                title=title_from_message(enriched),
+                body=enriched,
+                source="chat",
+            )
+        except Exception as exc:
+            logger.warning("Wiki ingest skipped: {}", type(exc).__name__)
     try:
         result = await APP.ainvoke(
             {
@@ -80,26 +90,25 @@ async def handle_message(
             }
         )
     except Exception as exc:
-        from src.integrations.openai_status import public_openai_error
+        from src.integrations.claude import public_claude_error
 
         logger.warning("Orchestrator failed: {}", type(exc).__name__)
         result = {
             "user_message": enriched,
             "attachments": attachments,
             "chat_history": history,
-            "reply": public_openai_error(exc),
+            "reply": public_claude_error(exc),
             "intent": "general",
             "obsidian_path": None,
         }
 
-    # Thought-dumps use the v1 contract: 00-Inbox/Daily/ under ## Log (or Unsorted).
-    if not result.get("obsidian_path") and is_inbox_thought_dump(enriched):
-        path = await try_obsidian_capture(enriched, "general")
-        if path:
-            result["obsidian_path"] = path
-            reply = (result.get("reply") or "").rstrip()
-            if path not in reply:
-                result["reply"] = f"{reply}\n\nSaved to `{path}`."
+    if inbox_path:
+        result["obsidian_path"] = inbox_path
+        reply = (result.get("reply") or "").rstrip()
+        if inbox_path not in reply:
+            result["reply"] = (
+                f"{reply}\n\nSaved to `{inbox_path}` — open Review to approve before it is filed."
+            )
 
     result["user_message"] = enriched
     result["intent"] = "general"

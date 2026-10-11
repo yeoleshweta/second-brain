@@ -25,8 +25,8 @@ export function SetupBanner({ onGoToSettings }: SetupBannerProps) {
     async function check() {
       try {
         const [google, plaid] = await Promise.all([
-          apiFetch('/api/auth/google/status').then((d: { connected: boolean }) => d.connected).catch(() => false),
-          apiFetch('/api/plaid/items').then((d: { items: unknown[] }) => d.items.length > 0).catch(() => false),
+          apiFetch<{ connected: boolean }>('/api/auth/google/status').then((d) => d.connected).catch(() => false),
+          apiFetch<{ items: unknown[] }>('/api/plaid/items').then((d) => d.items.length > 0).catch(() => false),
         ])
         if (!cancelled) setStatus({ google: google as boolean, plaid: plaid as boolean })
       } catch {

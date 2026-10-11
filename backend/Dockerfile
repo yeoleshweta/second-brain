@@ -14,11 +14,14 @@ COPY config ./config
 
 RUN mkdir -p /data \
     /vault/00-Inbox/Daily \
-    /vault/01-Knowledge \
-    /vault/02-Health \
-    /vault/03-Finance/Weekly \
+    /vault/00-Inbox/Unsorted \
+    /vault/01-Knowledge/Notes \
+    /vault/02-Health/Logs \
+    /vault/03-Finance/Logs \
     /vault/04-People \
-    /vault/05-Calendar
+    /vault/05-Calendar \
+    /vault/99-System/Templates \
+    /vault/99-System/Logs
 
 ENV PYTHONPATH="/app"
 ENV PYTHONUNBUFFERED=1

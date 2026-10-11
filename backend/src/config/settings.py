@@ -18,12 +18,14 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # LLM
-    openai_api_key: str = Field(..., description="OpenAI API key")
+    # LLM — Claude is chat + wiki; OpenAI is Whisper/TTS
+    openai_api_key: str = Field(..., description="OpenAI API key (Whisper / TTS)")
     openai_model_main: str = "gpt-4o"
     openai_model_cheap: str = "gpt-4o-mini"
     openai_transcribe_model: str = "whisper-1"
     openai_tts_model: str = "tts-1"
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-4-5"
 
     # App
     # 0.0.0.0 so Tailscale-routed traffic can reach the server. Token-gated.
@@ -77,13 +79,12 @@ class Settings(BaseSettings):
     apple_books_mcp_command: str = "uvx"
     apple_books_mcp_args: str = "apple-books-mcp@latest"
 
-    @field_validator("openai_api_key", mode="before")
+    @field_validator("openai_api_key", "anthropic_api_key", mode="before")
     @classmethod
-    def _strip_openai_key(cls, value: object) -> object:
+    def _strip_secret_keys(cls, value: object) -> object:
         if not isinstance(value, str):
             return value
-        cleaned = value.strip().strip("'").strip('"')
-        return cleaned
+        return value.strip().strip("'").strip('"')
 
     @property
     def openai_key_present(self) -> bool:
@@ -93,6 +94,15 @@ class Settings(BaseSettings):
     def openai_key_format_ok(self) -> bool:
         key = self.openai_api_key
         return key.startswith("sk-") and len(key) >= 40
+
+    @property
+    def anthropic_key_present(self) -> bool:
+        return bool((self.anthropic_api_key or "").strip())
+
+    @property
+    def anthropic_key_format_ok(self) -> bool:
+        key = (self.anthropic_api_key or "").strip()
+        return key.startswith("sk-ant-") and len(key) >= 20
 
     @property
     def obsidian_base_url(self) -> str:

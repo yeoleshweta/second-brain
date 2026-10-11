@@ -1,95 +1,78 @@
-"""One Second Brain agent — capture-first, one vault, one daily note."""
+"""One Second Brain agent — Claude chat; wiki filing waits for human review."""
 from __future__ import annotations
 
-from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from src.config import get_settings
-from src.integrations.obsidian import DAILY_NOTE_DIR
 
 if TYPE_CHECKING:
     from src.orchestrator.graph import AgentState
 
-SYSTEM_PROMPT = """You are the user's Second Brain — one assistant, one vault, one daily note.
+SYSTEM_PROMPT = """You are the user's Second Brain — one assistant for an Obsidian LLM Wiki.
 
 You answer helpfully and concisely (1–3 short paragraphs unless they ask for more).
-This is a personal capture-first system:
+Markdown in the vault is the source of truth.
 
-- Markdown in the Obsidian vault is the source of truth. SQLite is chat history only.
-- Structured writes go only under ## Log in today's daily note: 00-Inbox/Daily/YYYY-MM-DD.md.
-- Five log types only: food, finance, idea, task, exercise.
-- Unparseable captures go to 00-Inbox/Unsorted/. Failures go to 99-System/Logs/.
-- You never file into 01–05, Career/Profile, or Context. Structure emerges from human review later.
-- If they ask to remember / capture / write this down, acknowledge the Inbox save briefly.
-- Do not invent character names, specialist personas, or sitcom branding.
-- Do not claim you created atomic notes in 01-Knowledge or any domain folder.
+Every user message is saved to Inbox/ as a raw note. Claude may draft a filing, but
+nothing is written to Notes/, People/, Projects/, or Concepts/ until the user approves
+it in Review. Do not claim you already filed a permanent note.
 
-If today's daily note is provided below, use it so replies stay relevant.
-Do not rewrite existing log lines."""
+Use [[wiki-links]] in replies when you refer to people, projects, or concepts.
+Do not invent specialist personas. Do not send email or create calendar events.
 
-_DAILY_CONTEXT_CHARS = 4000
+If a pending-review list is provided below, you may mention it briefly when relevant."""
 
 
-def _today_daily_path() -> str:
-    return f"{DAILY_NOTE_DIR}/{datetime.now().strftime('%Y-%m-%d')}.md"
-
-
-def _read_today_daily_note() -> str:
-    """Read today's daily note from disk if it exists. Never create it."""
-    settings = get_settings()
-    if not settings.obsidian_vault_path:
-        return ""
-    path = Path(settings.obsidian_vault_path) / _today_daily_path()
-    if not path.is_file():
-        return ""
-    try:
-        return path.read_text(encoding="utf-8")
-    except OSError as exc:
-        logger.debug("Could not read today's daily note: {}", type(exc).__name__)
-        return ""
-
-
-def _build_system_message(daily: str) -> str:
-    if not daily.strip():
+def _build_system_message(pending_blurb: str) -> str:
+    if not pending_blurb.strip():
         return SYSTEM_PROMPT
-    clipped = daily[:_DAILY_CONTEXT_CHARS]
-    return (
-        f"{SYSTEM_PROMPT}\n\n"
-        f"Today's daily note (`{_today_daily_path()}`):\n"
-        f"{clipped}"
-    )
+    return f"{SYSTEM_PROMPT}\n\nNotes waiting for your review:\n{pending_blurb[:2000]}"
+
+
+async def _pending_blurb() -> str:
+    try:
+        from src.services.wiki import list_pending
+
+        rows = await list_pending()
+    except Exception as exc:
+        logger.debug("pending review list skipped: {}", type(exc).__name__)
+        return ""
+    if not rows:
+        return ""
+    lines = [
+        f"- `{r['path']}` ({r['status']}) → {r.get('destination') or 'no destination yet'}"
+        for r in rows[:12]
+    ]
+    return "\n".join(lines)
 
 
 async def run(state: AgentState) -> dict:
-    """Single chat node: answer helpfully; inbox capture happens after this in handle_message."""
-    from openai import AsyncOpenAI
+    from src.integrations.claude import complete, public_claude_error
 
     settings = get_settings()
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
-    daily = _read_today_daily_note()
-    messages: list[dict[str, str]] = [{"role": "system", "content": _build_system_message(daily)}]
-    for turn in (state.get("chat_history") or [])[-8:]:
-        role = turn.get("role")
-        content = turn.get("content")
-        if role in {"user", "assistant"} and content:
-            messages.append({"role": role, "content": str(content)})
-    messages.append({"role": "user", "content": state["user_message"]})
-
+    pending = await _pending_blurb()
+    history = [
+        {"role": str(t.get("role")), "content": str(t.get("content"))}
+        for t in (state.get("chat_history") or [])[-8:]
+        if t.get("role") in {"user", "assistant"} and t.get("content")
+    ]
     try:
-        resp = await client.chat.completions.create(
-            model=settings.openai_model_cheap,
-            messages=messages,
-            max_tokens=512,
-        )
-        reply = resp.choices[0].message.content or "I'm here. What's on your mind?"
+        if not settings.anthropic_key_present:
+            reply = (
+                "ANTHROPIC_API_KEY is not set. Add it to backend/.env and restart. "
+                "Your message can still be saved to Inbox for review."
+            )
+        else:
+            reply = await complete(
+                system=_build_system_message(pending),
+                user=state["user_message"],
+                messages=history,
+                max_tokens=1024,
+            ) or "I'm here. What's on your mind?"
     except Exception as exc:
-        logger.warning("Second Brain LLM error: {}", type(exc).__name__)
-        reply = (
-            "I couldn't reach the model just now. You can still capture with "
-            "“remember this…” or “write this down…” — that goes to today's Inbox daily note."
-        )
+        logger.warning("Second Brain Claude error: {}", type(exc).__name__)
+        reply = public_claude_error(exc)
 
     return {"reply": reply, "obsidian_path": None, "intent": "general"}

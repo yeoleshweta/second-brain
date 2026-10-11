@@ -13,9 +13,9 @@ services:
       - key: PYTHONPATH
         value: /opt/render/project/src/backend
       - key: OBSIDIAN_VAULT_PATH
-        value: /tmp/vault
+        value: /var/data/vault
       - key: DATA_DIR
-        value: /tmp/data
+        value: /var/data/app
       - key: DATABASE_URL
         sync: false   # set manually in Render dashboard from Supabase
       - key: OPENAI_API_KEY

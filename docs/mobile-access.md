@@ -1,6 +1,8 @@
 # Mobile Access via Tailscale
 
-Access your Second Brain from your iPhone (or any device) anywhere on your Tailscale network.
+Use this when you want the **Mac vault** (`~/Documents/SecondBrain`) and the phone on the same Tailscale network. **The Mac must be on.**
+
+To use the PWA **without** Tailscale or a nearby Mac, deploy instead: [cloud-deploy.md](cloud-deploy.md).
 
 ---
 
@@ -55,7 +57,21 @@ npm run dev -- --host
 
 ---
 
-## Step 5 — Open on iPhone
+## Step 5 — Open on iPhone / install the PWA
+
+This is the daily phone app: **Safari → Add to Home Screen**. There is no App Store listing. The Mac must stay awake and on Tailscale.
+
+If you still have a **Central Perk** icon, delete it. The current app is **Second Brain** (home-screen label **Brain**).
+
+1. Safari (not Chrome) at `http://<your-mac-name>:5173` (or Tailscale IP).
+2. Share → **Add to Home Screen**.
+3. Open the home-screen icon (standalone). Capture with `remember this:` / `write this down:` — same bot as the Mac.
+
+After a code update, open the PWA once on Wi‑Fi/Tailscale so the service worker can auto-update. If the old Friends UI is stuck: Settings → Safari → Clear History for the site, or delete the icon and add it again.
+
+**Research weeks 1–2:** use this PWA as the bot “as is.” Evening tallies still run on the Mac (`scripts/research_daily_tally.py`). The phone is for capture, not for editing the tally file.
+
+## Step 5b — URL (if you did not add to Home Screen yet)
 
 In Safari (or any browser), navigate to:
 

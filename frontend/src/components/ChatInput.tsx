@@ -199,7 +199,7 @@ export function ChatInput({ onSend, disabled, voice }: Props) {
               ? 'Talk mode on — speak, or type here to cancel'
               : disabled
                 ? 'Thinking…'
-                : 'Talk, or “remember this…” / “write this down…”'
+                : 'Talk, type, or send a photo — Review before it files'
           }
           disabled={disabled || voice?.active}
           enterKeyHint="send"
@@ -247,7 +247,7 @@ export function ChatInput({ onSend, disabled, voice }: Props) {
       </div>
       {!voice?.active && !disabled && (
         <p className="px-3 pb-2 text-[11px] text-paper-400">
-          Capture: remember this / write this down
+          Saved to Inbox. Approve in Review to file.
         </p>
       )}
     </div>

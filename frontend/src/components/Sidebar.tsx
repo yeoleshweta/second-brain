@@ -1,4 +1,4 @@
-import { MessageCircle, BookOpen, Settings, CalendarDays, DollarSign } from 'lucide-react'
+import { MessageCircle, BookOpen, Settings, CalendarDays, DollarSign, Inbox } from 'lucide-react'
 import { BrandHeader } from '@/components/BrandHeader'
 import { RecentChats } from '@/components/RecentChats'
 import type { AppView, ChatSessionSummary } from '@/types'
@@ -12,6 +12,7 @@ interface Props {
   activeSessionId: string | null
   onSelectSession: (id: string) => void
   onNewChat: () => void
+  reviewCount?: number
 }
 
 export function Sidebar({
@@ -21,6 +22,7 @@ export function Sidebar({
   activeSessionId,
   onSelectSession,
   onNewChat,
+  reviewCount = 0,
 }: Props) {
   return (
     <aside className="hidden md:flex flex-col w-72 shrink-0 bg-white/95 border-r border-paper-200 h-full overflow-y-auto backdrop-blur-sm">
@@ -33,6 +35,7 @@ export function Sidebar({
         {(
           [
             { id: 'chat' as View, icon: <MessageCircle size={16} />, label: 'Chat' },
+            { id: 'review' as View, icon: <Inbox size={16} />, label: 'Review' },
             { id: 'settings' as View, icon: <Settings size={16} />, label: 'Settings' },
           ] as const
         ).map(({ id, icon, label }) => (
@@ -47,7 +50,14 @@ export function Sidebar({
           >
             <span className={activeView === id ? 'text-paper-800' : 'text-paper-400'}>{icon}</span>
             <span className="text-sm font-medium">{label}</span>
-            {activeView === id && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-paper-800" />}
+            {id === 'review' && reviewCount > 0 && (
+              <span className="ml-auto text-[10px] font-semibold bg-amber-100 text-amber-800 rounded-full px-1.5 py-0.5">
+                {reviewCount}
+              </span>
+            )}
+            {id !== 'review' && activeView === id && (
+              <div className="ml-auto w-1.5 h-1.5 rounded-full bg-paper-800" />
+            )}
           </button>
         ))}
       </nav>

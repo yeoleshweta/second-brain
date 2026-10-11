@@ -13,16 +13,17 @@ export default defineConfig({
       registerType: 'autoUpdate',
       // During dev, the service worker is active so offline shell works
       devOptions: { enabled: true },
+      includeAssets: ['icons/apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png', 'logo.svg'],
       // What the service worker pre-caches at install time
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         // Runtime cache for API calls — network-first, fall back to cache
         runtimeCaching: [
           {
-            urlPattern: /^http.*\/api\/(health|reading-list|chandler|finance|morning-brief)/,
+            urlPattern: /^http.*\/api\/health/,
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'api-cache',
+              cacheName: 'api-cache-v2',
               expiration: { maxEntries: 50, maxAgeSeconds: 300 },
               networkTimeoutSeconds: 5,
             },
@@ -32,10 +33,11 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
       manifest: {
+        id: '/',
         name: 'Second Brain',
-        short_name: 'Second Brain',
+        short_name: 'Brain',
         description: 'One chat, one vault, one daily note.',
-        start_url: '/',
+        start_url: '/?source=pwa',
         display: 'standalone',
         background_color: '#FAF0E4',
         theme_color: '#6B3FA0',

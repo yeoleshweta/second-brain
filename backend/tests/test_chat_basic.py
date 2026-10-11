@@ -21,27 +21,6 @@ from src.integrations.obsidian import (
 from src.orchestrator.graph import _classify_node, handle_message
 
 
-def _fake_openai(content: str = "Hey — got it."):
-    class _Msg:
-        def __init__(self, text: str) -> None:
-            self.content = text
-
-    class _Choice:
-        def __init__(self, text: str) -> None:
-            self.message = _Msg(text)
-
-    class _FakeResp:
-        def __init__(self, text: str) -> None:
-            self.choices = [_Choice(text)]
-
-    async def fake_create(**kwargs):  # type: ignore[no-untyped-def]
-        return _FakeResp(content)
-
-    fake_client = AsyncMock()
-    fake_client.chat.completions.create = fake_create
-    return fake_client
-
-
 @pytest.fixture
 def vault(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "vault"
@@ -223,18 +202,17 @@ async def test_append_to_inbox_unsorted_when_unparseable(vault: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_message_walk_capture_uses_daily(vault: Path) -> None:
-    with patch("openai.AsyncOpenAI", return_value=_fake_openai("Noted.")):
+async def test_handle_message_writes_inbox_not_wiki_folders(vault: Path) -> None:
+    with patch("src.integrations.claude.complete", AsyncMock(return_value="Noted.")):
         result = await handle_message("remember this: 30 min walk")
 
-    today = datetime.now().strftime("%Y-%m-%d")
-    expected = f"{DAILY_NOTE_DIR}/{today}.md"
-    assert result["obsidian_path"] == expected
-    assert "Local REST API" not in (result.get("reply") or "")
-    body = (vault / expected).read_text(encoding="utf-8")
-    assert "## Log" in body
-    assert "**exercise**" in body
+    path = str(result["obsidian_path"])
+    assert path.startswith("Inbox/")
+    assert "Review" in (result.get("reply") or "")
+    body = (vault / path).read_text(encoding="utf-8")
+    assert "status: inbox" in body or "status: inbox" in body.replace('"', "")
     assert "30 min walk" in body
+    assert not (vault / "Notes").exists() or not any((vault / "Notes").glob("*.md"))
     assert not (vault / "02-Health").exists()
 
 
@@ -257,17 +235,13 @@ async def test_handle_log_workout_uses_inbox_not_health_folder(vault: Path) -> N
 
 
 @pytest.mark.asyncio
-async def test_handle_message_capture_uses_daily(vault: Path) -> None:
-    with patch("openai.AsyncOpenAI", return_value=_fake_openai("Noted.")):
+async def test_handle_message_does_not_touch_profile(vault: Path) -> None:
+    with patch("src.integrations.claude.complete", AsyncMock(return_value="Noted.")):
         result = await handle_message("remember this: idea — empathy at scale")
 
-    today = datetime.now().strftime("%Y-%m-%d")
-    expected = f"{DAILY_NOTE_DIR}/{today}.md"
     assert result["intent"] == "general"
-    assert result["obsidian_path"] == expected
-    body = (vault / expected).read_text(encoding="utf-8")
-    assert "## Log" in body
-    assert "**idea**" in body
+    assert str(result["obsidian_path"]).startswith("Inbox/")
+    body = (vault / str(result["obsidian_path"])).read_text(encoding="utf-8")
     assert "empathy at scale" in body
     skills = (vault / "Career" / "Profile" / "skills.md").read_text(encoding="utf-8")
     context = (vault / "Context" / "career.md").read_text(encoding="utf-8")
@@ -276,77 +250,24 @@ async def test_handle_message_capture_uses_daily(vault: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_message_unparseable_goes_unsorted(vault: Path) -> None:
-    with patch("openai.AsyncOpenAI", return_value=_fake_openai("Noted.")):
-        result = await handle_message("remember this: I like oat milk")
-
-    assert result["obsidian_path"]
-    assert str(result["obsidian_path"]).startswith(f"{UNSORTED_DIR}/")
-    assert "I like oat milk" in (vault / str(result["obsidian_path"])).read_text(
-        encoding="utf-8"
-    )
-    skills = (vault / "Career" / "Profile" / "skills.md").read_text(encoding="utf-8")
-    context = (vault / "Context" / "career.md").read_text(encoding="utf-8")
-    assert skills == "# Skills\nPython\n"
-    assert context == "User-owned routing notes.\n"
-
-
-@pytest.mark.asyncio
-async def test_handle_message_plain_chat_skips_inbox(vault: Path) -> None:
-    with patch("openai.AsyncOpenAI", return_value=_fake_openai("Try a loop around the park.")):
+async def test_handle_message_plain_chat_still_queues_review(vault: Path) -> None:
+    with patch(
+        "src.integrations.claude.complete",
+        AsyncMock(return_value="Try a loop around the park."),
+    ):
         result = await handle_message("what's a good walk idea")
 
     assert result["intent"] == "general"
-    assert result["obsidian_path"] is None
-    daily = vault / "00-Inbox" / "Daily"
-    unsorted = vault / "00-Inbox" / "Unsorted"
-    assert not daily.exists() or not any(daily.iterdir())
-    assert not unsorted.exists() or not any(unsorted.iterdir())
-
-
-@pytest.mark.asyncio
-async def test_handle_message_reads_today_daily_note(vault: Path) -> None:
-    today = datetime.now().strftime("%Y-%m-%d")
-    daily = vault / DAILY_NOTE_DIR / f"{today}.md"
-    daily.parent.mkdir(parents=True)
-    daily.write_text(
-        f"# {today}\n\n## Log\n- 08:00 🍽 **food** :: leftover oats [src:: user]\n",
-        encoding="utf-8",
-    )
-    captured: dict = {}
-
-    class _Msg:
-        def __init__(self, text: str) -> None:
-            self.content = text
-
-    class _Choice:
-        def __init__(self, text: str) -> None:
-            self.message = _Msg(text)
-
-    class _FakeResp:
-        def __init__(self, text: str) -> None:
-            self.choices = [_Choice(text)]
-
-    async def fake_create(**kwargs):  # type: ignore[no-untyped-def]
-        captured["messages"] = kwargs["messages"]
-        return _FakeResp("You already logged leftover oats.")
-
-    fake_client = AsyncMock()
-    fake_client.chat.completions.create = fake_create
-
-    with patch("openai.AsyncOpenAI", return_value=fake_client):
-        result = await handle_message("what did I log for breakfast?")
-
-    assert result["intent"] == "general"
-    system = captured["messages"][0]["content"]
-    assert "leftover oats" in system
-    assert "00-Inbox/Daily" in system
+    assert str(result["obsidian_path"]).startswith("Inbox/")
+    body = (vault / str(result["obsidian_path"])).read_text(encoding="utf-8")
+    assert "good walk idea" in body
+    assert not list((vault / "Projects").glob("*.md")) if (vault / "Projects").exists() else True
 
 
 @pytest.mark.asyncio
 async def test_handle_message_friends_names_stay_general(vault: Path) -> None:
     with (
-        patch("openai.AsyncOpenAI", return_value=_fake_openai()),
+        patch("src.integrations.claude.complete", AsyncMock(return_value="Hey — got it.")),
         patch(
             "src.agents.career.handle_chat",
             AsyncMock(side_effect=AssertionError("career agent must not run")),
@@ -358,11 +279,8 @@ async def test_handle_message_friends_names_stay_general(vault: Path) -> None:
     ):
         result = await handle_message("Rachel what should I work on next")
     assert result["intent"] == "general"
-    assert result.get("obsidian_path") is None
-    today = datetime.now().strftime("%Y-%m-%d")
-    assert not (vault / "01-Knowledge").exists()
-    daily = vault / DAILY_NOTE_DIR / f"{today}.md"
-    assert not daily.exists()
+    assert str(result["obsidian_path"]).startswith("Inbox/")
+    assert not (vault / "01-Knowledge").exists() or not any((vault / "01-Knowledge").rglob("*.md"))
 
 
 # ── Auth + SSE chat handler ────────────────────────────────────────────────────

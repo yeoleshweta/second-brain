@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { BookOpen, ExternalLink, Check, Trash2, RotateCcw, RefreshCw, Search, BookMarked, Smartphone } from 'lucide-react'
+import { BookOpen, ExternalLink, Check, Trash2, RotateCcw, RefreshCw, Search, BookMarked } from 'lucide-react'
 import { getReadingList, updateItem, deleteItem } from '@/lib/api'
 import { openExternalUrl } from '@/lib/openExternal'
 import { opensInAppReader } from '@/lib/readingItem'

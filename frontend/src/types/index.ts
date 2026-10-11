@@ -1,6 +1,6 @@
 export type Intent = 'knowledge' | 'health' | 'finance' | 'calendar' | 'career' | 'general'
 
-export type AppView = 'chat' | 'reading' | 'agenda' | 'finance' | 'settings'
+export type AppView = 'chat' | 'review' | 'reading' | 'agenda' | 'finance' | 'settings'
 
 export interface DigestItem {
   title: string
