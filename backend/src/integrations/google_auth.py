@@ -73,7 +73,16 @@ def load_google_credentials() -> Credentials | None:
     except Exception as exc:
         logger.debug("DB Google token not available: {}", exc)
 
-    # 2. Fall back to file (local Mac dev)
+    # 2. Cloud host passes the token in the environment.
+    raw = (settings.google_token_json or "").strip()
+    if raw:
+        creds = Credentials.from_authorized_user_info(json.loads(raw), GOOGLE_SCOPES)
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            _save_to_db(creds)
+        return creds
+
+    # 3. Fall back to file (local Mac dev)
     if not settings.google_token_path:
         return None
     token_path = Path(settings.google_token_path)

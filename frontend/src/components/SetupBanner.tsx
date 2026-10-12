@@ -54,7 +54,7 @@ export function SetupBanner({ onGoToSettings }: SetupBannerProps) {
   })
 
   return (
-    <div className="mb-4 bg-amber-50 border border-amber-200 rounded-2xl p-3.5 relative">
+    <div className="mb-4 bg-paper-100 border border-paper-300 rounded-2xl p-3.5 relative">
       <button
         onClick={() => setDismissed(true)}
         className="absolute top-2.5 right-2.5 p-1 rounded-lg text-amber-400 active:text-amber-600 transition"
@@ -66,7 +66,7 @@ export function SetupBanner({ onGoToSettings }: SetupBannerProps) {
       <div className="flex items-start gap-2 pr-6">
         <AlertCircle size={15} className="text-amber-500 shrink-0 mt-0.5" />
         <div className="space-y-2 flex-1">
-          <p className="text-xs font-semibold text-amber-800">
+          <p className="text-xs font-semibold text-paper-700">
             Finish setup
           </p>
 
@@ -84,7 +84,7 @@ export function SetupBanner({ onGoToSettings }: SetupBannerProps) {
 
           <button
             onClick={onGoToSettings}
-            className="text-xs font-semibold text-amber-700 bg-amber-100 active:bg-amber-200 px-3 py-1.5 rounded-lg transition mt-1"
+            className="text-xs font-semibold text-amber-700 bg-paper-200 active:bg-amber-200 px-3 py-1.5 rounded-lg transition mt-1"
           >
             Connect now →
           </button>

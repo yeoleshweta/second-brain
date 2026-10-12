@@ -3,11 +3,16 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "functions": {
-    "api/[[...path]].ts": {
-      "maxDuration": 10
-    }
+    "api/[...path].ts": { "maxDuration": 10 },
+    "api/wiki/[...slug].ts": { "maxDuration": 10 },
+    "api/setup/[...slug].ts": { "maxDuration": 10 },
+    "api/chat/[...slug].ts": { "maxDuration": 10 },
+    "api/usage/[...slug].ts": { "maxDuration": 10 },
+    "api/morning-brief/[...slug].ts": { "maxDuration": 10 },
+    "api/auth/[...slug].ts": { "maxDuration": 10 },
+    "api/plaid/[...slug].ts": { "maxDuration": 10 }
   },
   "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    { "source": "/:path((?!api/).*)", "destination": "/index.html" }
   ]
 }

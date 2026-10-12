@@ -160,6 +160,13 @@ class ChatRequest(BaseModel):
     attachments: list[dict] = []
     chat_history: list[dict] = []
     session_id: str | None = None
+    plain_mode: bool = False
+
+
+class ShareRequest(BaseModel):
+    url: str = ""
+    text: str = ""
+    title: str = ""
 
 
 class WikiIngestRequest(BaseModel):
@@ -362,6 +369,7 @@ async def chat(req: ChatRequest, db: Annotated[Session, Depends(get_session)]):
                 req.attachments,
                 history,
                 session_id=session_id,
+                plain_mode=req.plain_mode,
             )
 
             user_content = (result.get("user_message") or req.message or "").strip()
@@ -384,17 +392,20 @@ async def chat(req: ChatRequest, db: Annotated[Session, Depends(get_session)]):
                 extra["suggestItems"] = result["suggest_items"]
             if result.get("book_items"):
                 extra["bookItems"] = result["book_items"]
+            if result.get("pending_calendar"):
+                extra["pendingCalendar"] = result["pending_calendar"]
             if result.get("obsidian_path"):
                 extra["obsidianPath"] = result["obsidian_path"]
-                inbox_path = result["obsidian_path"]
+                captured = str(result["obsidian_path"])
+                if not captured.startswith("00-Inbox/Void/"):
 
-                async def _propose_later(path: str = inbox_path) -> None:
-                    try:
-                        await wiki_service.propose(path)
-                    except Exception as exc:
-                        logger.warning("background wiki propose failed: {}", type(exc).__name__)
+                    async def _propose_later(path: str = captured) -> None:
+                        try:
+                            await wiki_service.propose(path)
+                        except Exception as exc:
+                            logger.warning("background wiki propose failed: {}", type(exc).__name__)
 
-                asyncio.create_task(_propose_later())
+                    asyncio.create_task(_propose_later())
 
             chat_store.append_message(
                 db,
@@ -417,6 +428,10 @@ async def chat(req: ChatRequest, db: Annotated[Session, Depends(get_session)]):
                 yield {"event": "book_items", "data": _json.dumps(result["book_items"])}
             if result.get("obsidian_path"):
                 yield {"event": "obsidian", "data": result["obsidian_path"]}
+            if result.get("pending_calendar"):
+                import json as _json
+
+                yield {"event": "pending_calendar", "data": _json.dumps(result["pending_calendar"])}
             yield {"event": "intent", "data": intent or "general"}
             yield {"event": "done", "data": "1"}
         except Exception as e:
@@ -426,6 +441,42 @@ async def chat(req: ChatRequest, db: Annotated[Session, Depends(get_session)]):
             yield {"event": "error", "data": public_openai_error(e)}
 
     return EventSourceResponse(stream())
+
+
+@app.post("/api/share", dependencies=[Depends(require_token)])
+async def share_link(
+    req: ShareRequest,
+    db: Annotated[Session, Depends(get_session)],
+) -> dict:
+    """Save one Instagram or LinkedIn link from the iPhone share sheet."""
+    from src.integrations.obsidian import ObsidianClient
+    from src.services.social_share import ShareRejectedError, parse_share, share_line
+
+    try:
+        note_src = " ".join(part.strip() for part in (req.text, req.title) if part.strip())
+        link, label, note = parse_share(req.url, note_src)
+    except ShareRejectedError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    line = share_line(link, label, note)
+    try:
+        async with ObsidianClient() as client:
+            path = await client.append_to_inbox(line, source="user")
+    except Exception as exc:
+        logger.warning("share capture failed: {}", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Could not save the link.") from exc
+
+    chat = chat_store.get_or_create_titled_session(db, "Shares")
+    chat_store.append_message(db, chat.id, role="user", content=line)
+    reply = f"Saved this {label} link in today’s void file."
+    chat_store.append_message(
+        db,
+        chat.id,
+        role="assistant",
+        content=reply,
+        intent="general",
+        extra={"obsidianPath": path},
+    )
+    return {"ok": True, "label": label, "path": path, "session_id": chat.id, "reply": reply}
 
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB

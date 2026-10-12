@@ -39,7 +39,9 @@ Templates/        ← frontmatter + note shapes
 99-System/Logs/   ← pipeline failures (never silent)
 ```
 
-Legacy `00-Inbox/`, `01–05`, `Career/`, `Context/` may still exist on disk. **v2 jobs do not write those trees.** Chat and ingest write `Inbox/` only. Approve writes `Notes/`, `People/`, `Projects/`, `Concepts/`, `Briefings/`. Failures → `99-System/Logs/`.
+**The Void capture target** is `00-Inbox/Void/YYYY-MM-DD.md` (bot only). `## Log` if exactly one type matches; `## Unsorted` otherwise. The human daily note `00-Inbox/Daily/YYYY-MM-DD.md` embeds `![[Void/YYYY-MM-DD]]` and is never written by the bot. Capture happens only on a phrase (`remember this`, `write this down`, …). Chat does not dump every turn into `Inbox/`. Failures → `99-System/Logs/`.
+
+Optional Mac sync: private GitHub vault repo + Obsidian Git (`syncMethod: merge`, pull every few minutes). Cloud capture can use `GITHUB_VAULT_REPO` + `GITHUB_TOKEN` so `ObsidianClient` writes via the Contents API; the Mac pulls.
 
 ### Frontmatter (every note)
 
@@ -65,7 +67,7 @@ source: ""      # chat | voice | photo | clip | email | meeting | upload
 
 ### Processor must not
 
-- Move money, send email, or create calendar events without an explicit confirmation gate.
+- Move money, send email, or create calendar events without an explicit confirmation gate (chat: propose → Add to calendar).
 - Delete user notes. Failures append to `99-System/Logs/`.
 - Use Claude for simple search (use vault grep / list; Claude only for transform + chat).
 
@@ -103,7 +105,7 @@ SQLite sits beside the vault: `chat_sessions`, `ingest_items`, `job_runs`. It is
 
 | Channel | How it enters | Immediate write |
 |---|---|---|
-| **Typed chat** | Composer → `POST /api/chat` | `Inbox/` raw note + Claude reply |
+| **Typed chat** | Composer → `POST /api/chat` | `Inbox/` raw note + Claude reply (schedule/agenda/calendar-confirm turns skip Inbox) |
 | **Voice** | Mic → `/api/upload` → Whisper transcribe → same as chat | Transcript in Inbox (`source: voice`) |
 | **Camera / photos** | File picker or camera → `/api/upload` → Claude vision caption + OCR-ish description | Image saved under vault attachments; Inbox note with `source: photo` |
 | **Files / PDFs** | Upload | Inbox note + extracted text |
@@ -125,8 +127,8 @@ No extra “six apps.” One PWA. Clipper and Gmail are pipes into the same Inbo
 
 - Retrieve: keyword/file search over the vault (not a 200k dump of everything).
 - Reply with Claude. Cite `[[Note titles]]` when they exist.
-- Always dump the user turn (and attachments) to `Inbox/` — no ritual phrase required (v1 phrases retired).
-- `intent` stays `general` (one bot).
+- Always dump the user turn (and attachments) to `Inbox/` — no ritual phrase required (v1 phrases retired), **except** Google Calendar schedule/agenda/confirm turns. Those hit Calendar only after you tap Add; they are not wiki notes.
+- `intent` stays `general` (one bot). Chat may propose a calendar event; it must not create one until confirm.
 
 Speech-to-text stays **OpenAI Whisper** unless we later swap it. Images and filing use **Claude**.
 

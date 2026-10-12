@@ -1,10 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'http'
-import { isAuthorized } from './_lib/auth'
-import { blobConfigured } from './_lib/blob'
-import { claudeHealth, completeClaude, probeClaude, publicClaudeError } from './_lib/claude'
-import { formatInZone, zoneNow } from './_lib/capture'
-import { loadState, saveState, sessionToApi, titleFromMessage, type AppState, type StoredSession } from './_lib/store'
-import * as wiki from './_lib/wiki'
+import { isAuthorized } from './auth.js'
+import { blobConfigured } from './blob.js'
+import { claudeHealth, completeClaude, probeClaude, publicClaudeError } from './claude.js'
+import { formatInZone, zoneNow } from './capture.js'
+import { calendarReply, skipsVault } from './calendar.js'
+import { loadState, saveState, sessionToApi, titleFromMessage, type AppState, type StoredSession } from './store.js'
+import * as wiki from './wiki.js'
 
 type VercelReq = IncomingMessage & {
   method?: string
@@ -12,11 +13,22 @@ type VercelReq = IncomingMessage & {
   body?: unknown
 }
 
-function routeParts(req: VercelReq): string[] {
-  const raw = req.query.path
+function asSegments(raw: string | string[] | undefined): string[] {
   if (Array.isArray(raw)) return raw.filter(Boolean)
   if (typeof raw === 'string' && raw) return raw.split('/').filter(Boolean)
   return []
+}
+
+function routeParts(req: VercelReq): string[] {
+  const pathname = (req.url || '').split('?')[0] || ''
+  const fromUrl = pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean)
+  const fromQuery = [
+    ...asSegments(req.query?.path),
+    ...asSegments(req.query?.slug),
+  ]
+  const candidates = [fromUrl, fromQuery].filter((c) => c.length)
+  candidates.sort((a, b) => b.length - a.length)
+  return candidates[0] || []
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -74,8 +86,8 @@ function parseBody(req: VercelReq): Record<string, unknown> {
 }
 
 const CHAT_SYSTEM = `You are the user's Second Brain. Answer helpfully and concisely.
-Every user message is saved to Inbox. Nothing is filed into Notes/People/Projects/Concepts until they approve it in Review.
-Do not claim you already filed a permanent note.`
+Knowledge capture goes to Inbox and waits for Review. Do not claim you already filed a permanent note.
+Do not dump meetings or emails into the wiki. Calendar adds happen only after an explicit confirm in the Mac app.`
 
 async function chatCompletion(userMessage: string, history: { role: string; content: string }[]): Promise<string> {
   try {
@@ -134,10 +146,12 @@ async function handleChat(req: VercelReq, res: ServerResponse): Promise<void> {
   const history = dbHistory.length ? dbHistory : historyIn
 
   try {
-    const reply = await chatCompletion(message, history)
+    const calendar = calendarReply(message)
+    const reply = calendar || (await chatCompletion(message, history))
     let obsidianPath: string | null = null
     let finalReply = reply
-    if (message.trim()) {
+    const skipInbox = Boolean(calendar) || skipsVault(message)
+    if (message.trim() && !skipInbox) {
       if (!blobConfigured()) {
         finalReply = `${reply}\n\nCapture skipped: enable Vercel Blob (Storage → Blob).`
       } else {
@@ -256,7 +270,7 @@ export default async function handler(req: VercelReq, res: ServerResponse): Prom
       )
       try {
         const proposed = await wiki.propose(inboxPath)
-        sendJson(res, 200, { path: inboxPath, ...proposed })
+        sendJson(res, 200, proposed)
       } catch (err) {
         sendJson(res, 200, {
           path: inboxPath,

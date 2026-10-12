@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     # Storage
     database_url: str = "sqlite:///./data/secondbrain.db"
     data_dir: Path = Path("./data")
+    # Supabase project. The publishable key is the client key. Schema changes need the secret key.
+    supabase_url: str = ""
+    supabase_publishable_key: str = ""
+    supabase_secret_key: str = ""
 
     # Knowledge
     tavily_api_key: str | None = None
@@ -56,6 +60,8 @@ class Settings(BaseSettings):
     # GitHub — used to personalize digest suggestions based on your projects
     github_username: str | None = None
     github_token: str | None = None  # optional; enables private repo access + higher rate limit
+    github_vault_repo: str | None = None  # owner/name — write vault via Contents API
+    github_vault_branch: str = "main"
 
     # Finance — Plaid
     plaid_client_id: str | None = None
@@ -69,7 +75,10 @@ class Settings(BaseSettings):
     # Calendar — Google
     google_oauth_client_secrets: Path | None = None
     google_token_path: Path | None = None
+    # Full token JSON for the cloud host. The Mac keeps using the token file.
+    google_token_json: str = ""
     google_calendar_id: str = "primary"
+    app_timezone: str = "America/New_York"
 
     # Health
     health_export_dir: Path | None = None

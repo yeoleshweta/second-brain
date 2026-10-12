@@ -1,4 +1,4 @@
-import { readText, writeText } from './blob'
+import { readText, writeText } from './blob.js'
 
 const STATE_PATH = 'state/app.json'
 

@@ -115,7 +115,7 @@ export function PlaidConnectSection() {
     !linkToken
 
   return (
-    <div className="bg-white border border-paper-200 rounded-2xl p-4 space-y-3">
+    <div className="bg-paper-50 border border-paper-200 rounded-2xl p-4 space-y-3">
       <div className="flex items-start gap-3">
         <div className="w-10 h-10 rounded-xl bg-perk-100 border border-perk-200 flex items-center justify-center shrink-0">
           <Landmark size={18} className="text-perk-600" />
@@ -190,7 +190,7 @@ export function PlaidConnectSection() {
                     type="button"
                     onClick={() => void handleUnlink(item.item_id, item.institution_name)}
                     disabled={unlinkingId === item.item_id}
-                    className="shrink-0 flex items-center gap-1 text-xs font-medium text-paper-500 hover:text-red-600 disabled:opacity-50 min-h-[36px] px-2"
+                    className="shrink-0 flex items-center gap-1 text-xs font-medium text-paper-500 hover:text-rust-400 disabled:opacity-50 min-h-[36px] px-2"
                   >
                     {unlinkingId === item.item_id ? (
                       <Loader2 size={14} className="animate-spin" />

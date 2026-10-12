@@ -39,6 +39,18 @@ def get_session(db: Session, session_id: str) -> ChatSession | None:
     return db.get(ChatSession, session_id)
 
 
+def get_or_create_titled_session(db: Session, title: str) -> ChatSession:
+    stmt = (
+        select(ChatSession)
+        .where(ChatSession.title == title)
+        .order_by(ChatSession.updated_at.desc())
+    )
+    row = db.exec(stmt).first()
+    if row:
+        return row
+    return create_session(db, title=title)
+
+
 def list_sessions(db: Session, *, limit: int = 30) -> list[ChatSession]:
     stmt = select(ChatSession).order_by(ChatSession.updated_at.desc()).limit(limit)
     return list(db.exec(stmt).all())

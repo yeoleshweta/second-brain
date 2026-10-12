@@ -1,22 +1,13 @@
+import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { Components } from 'react-markdown'
 import { SuggestionPicker } from '@/components/SuggestionPicker'
 import { BookPicker } from '@/components/BookPicker'
+import { splitCaptureStatus, type CaptureChip } from '@/lib/captureStatus'
 import { openExternalUrl, isExternalUrl } from '@/lib/openExternal'
-import { speakReply } from '@/lib/voice'
+import { isPlainMode, speakReply } from '@/lib/voice'
 import type { Message } from '@/types'
-import { Brain, Volume2 } from 'lucide-react'
-
-function AssistantMark() {
-  return (
-    <div
-      className="w-8 h-8 rounded-xl bg-paper-800 text-paper-50 flex items-center justify-center shrink-0 self-end mb-0.5"
-      aria-hidden
-    >
-      <Brain size={15} strokeWidth={1.75} />
-    </div>
-  )
-}
+import { Volume2 } from 'lucide-react'
 
 const markdownLinkComponents: Components = {
   a: ({ href, children }) => {
@@ -43,12 +34,22 @@ const markdownLinkComponents: Components = {
 
 // ── Thinking dots ─────────────────────────────────────────────────────────────
 function ThinkingDots() {
+  if (!isPlainMode()) {
+    return (
+      <div className="void-wire" aria-label="The Void is typing">
+        <span className="void-bulb bg-[#FF4545]" />
+        <span className="void-bulb bg-[#F2B84B]" />
+        <span className="void-bulb bg-[#5BA8E6]" />
+        <span className="void-bulb bg-[#5FCB7A]" />
+      </div>
+    )
+  }
   return (
-    <div className="flex items-center gap-1.5 px-1 py-0.5" aria-label="Thinking…">
+    <div className="flex items-center gap-1.5 px-1 py-0.5" aria-label="The Void is typing">
       {[0, 1, 2].map((i) => (
         <span
           key={i}
-          className="w-2 h-2 rounded-full bg-paper-400"
+          className="w-2 h-2 rounded-full bg-void-muted"
           style={{ animation: `dotBounce 1.2s ease-in-out ${i * 0.18}s infinite` }}
         />
       ))}
@@ -56,78 +57,163 @@ function ThinkingDots() {
   )
 }
 
-// ── Obsidian save badge ───────────────────────────────────────────────────────
-function ObsidianBadge({ path }: { path: string }) {
-  const short = path.replace(/^.*\/SecondBrain\//, '').replace(/^.*\/Documents\//, '')
+function StatusChipView({ chip }: { chip: CaptureChip }) {
+  const [open, setOpen] = useState(false)
+  const tone =
+    chip.kind === 'log'
+      ? 'border-void-red text-void-text'
+      : chip.kind === 'unsorted'
+        ? 'border-void-upside text-void-text'
+        : chip.kind === 'queued'
+          ? 'border-void-static text-void-text'
+          : 'border-void-muted text-void-muted'
+  const mark =
+    chip.kind === 'log' ? (
+      <span className="w-2 h-2 rounded-full bg-void-red shrink-0" />
+    ) : chip.kind === 'unsorted' ? (
+      <span className="text-void-upside text-[10px] leading-none shrink-0" aria-hidden>▼</span>
+    ) : chip.kind === 'queued' ? (
+      <span className="w-2 h-2 rounded-full border border-void-static shrink-0" />
+    ) : (
+      <span className="w-2 h-2 rounded-full border border-void-muted shrink-0" />
+    )
+  const words =
+    chip.kind === 'log'
+      ? 'Saved · Log'
+      : chip.kind === 'unsorted'
+        ? 'Saved · Unsorted'
+        : chip.kind === 'queued'
+          ? 'Not saved yet · retrying'
+          : 'Not saved'
+
   return (
-    <div className="flex items-center gap-1.5 mt-2 py-1.5 px-2.5 bg-sage-100 rounded-lg w-fit max-w-full">
-      <span className="text-xs shrink-0">🪄</span>
-      <span className="text-[10px] font-mono text-sage-500 leading-none truncate">{short}</span>
+    <div className="mt-2">
+      <button
+        type="button"
+        className={`inline-flex items-center gap-1.5 min-h-[32px] rounded-full border px-2.5 py-1 text-[13px] font-medium ${tone}`}
+        aria-label={chip.label}
+        onClick={() => chip.path && setOpen((v) => !v)}
+      >
+        {mark}
+        <span>{words}</span>
+        {(chip.kind === 'log' || chip.kind === 'unsorted') && chip.typeLabel && (
+          <span className="rounded-full bg-void-tag px-1.5 py-0.5 text-[12px] font-medium text-[#1a100c]">
+            {chip.typeLabel}
+          </span>
+        )}
+      </button>
+      {open && chip.path && (
+        <p className="mt-1 text-[12px] text-void-muted break-all">{chip.path}</p>
+      )}
     </div>
   )
 }
 
+function clockLabel(iso?: string): string | null {
+  if (!iso) return null
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
 // ── User message ──────────────────────────────────────────────────────────────
 function UserBubble({ message }: { message: Message }) {
-  const { content, attachments } = message
+  const { content, attachments, createdAt } = message
+  const time = clockLabel(createdAt)
   return (
     <div className="flex justify-end py-1">
       <div className="max-w-[85%] md:max-w-[65%]">
-        <div className="bg-friends-purple text-white rounded-[22px] rounded-br-[6px] px-4 py-2.5 shadow-card border border-friends-purple-dark/30">
+        <div className="bg-void-surface/70 backdrop-blur-md text-void-text rounded-2xl px-4 py-2.5 border border-white/10">
           {content ? (
-            <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{content}</p>
+            <p className="text-base leading-[1.45] break-words whitespace-pre-wrap">{content}</p>
           ) : (
-            <p className="text-sm italic text-white/80">Attachment</p>
+            <p className="text-base italic text-void-muted">Attachment</p>
           )}
           {attachments && attachments.length > 0 && (
-            <p className="text-[10px] text-white/70 mt-1 truncate">
+            <p className="text-[12px] text-void-muted mt-1 truncate">
               {attachments.map((a) => a.name).join(', ')}
             </p>
           )}
         </div>
+        {time && <p className="mt-1 text-right text-[12px] text-void-muted">{time}</p>}
       </div>
     </div>
   )
 }
 
 // ── Assistant message ─────────────────────────────────────────────────────────
-function AssistantBubble({ message }: { message: Message }) {
-  const { content, status, intent, obsidianPath, digestItems, suggestItems, bookItems } = message
+function AssistantBubble({
+  message,
+  showCalendarActions,
+  onCalendarConfirm,
+  onCalendarCancel,
+}: {
+  message: Message
+  showCalendarActions?: boolean
+  onCalendarConfirm?: () => void
+  onCalendarCancel?: () => void
+}) {
+  const { content, status, intent, obsidianPath, pendingCalendar, digestItems, suggestItems, bookItems } = message
   const isThinking = status === 'thinking' && !content
   const isError = status === 'error'
+  const parsed = !isThinking && !isError ? splitCaptureStatus(content) : null
+  const body = parsed?.body || content
+  const chip = parsed?.chip
+  const plain = isPlainMode()
 
   return (
-    <div className="flex items-end gap-2.5 py-1">
-      <AssistantMark />
-
+    <div className="flex items-start gap-2 py-1">
       <div className="flex-1 min-w-0">
-        {content && !isThinking && (
-          <div className="flex items-center gap-1.5 mb-1.5 ml-0.5">
-            <button
-              type="button"
-              className="ml-auto touch-target flex items-center justify-center text-paper-400 active:text-paper-700"
-              aria-label="Play reply"
-              onClick={() => void speakReply(content, intent)}
-            >
-              <Volume2 size={14} />
-            </button>
-          </div>
-        )}
-
-        <div
-          className={`max-w-[85%] md:max-w-[65%] bg-white rounded-[22px] rounded-bl-[6px] px-4 py-3 shadow-card border border-paper-200 ${
-            isError ? 'bg-rust-100 border-rust-400/30' : ''
-          }`}
-        >
+        <div className={`max-w-[85%] md:max-w-[72%] border-l-2 pl-3 ${isError ? 'border-void-static' : 'border-void-red'}`}>
           {isThinking ? (
             <ThinkingDots />
           ) : (
-            <div className="prose-chat text-sm leading-relaxed break-words">
-              <ReactMarkdown components={markdownLinkComponents}>{content}</ReactMarkdown>
-            </div>
+            <>
+              {body && (
+                <div className="flex items-start gap-2">
+                  <div className="prose-chat min-w-0 flex-1 text-base leading-[1.45] break-words text-void-text">
+                    <ReactMarkdown components={markdownLinkComponents}>{body}</ReactMarkdown>
+                  </div>
+                  <button
+                    type="button"
+                    className="touch-target flex items-center justify-center text-void-muted"
+                    aria-label="Play reply"
+                    onClick={() => void speakReply(body, intent)}
+                  >
+                    <Volume2 size={14} />
+                  </button>
+                </div>
+              )}
+              {chip && !plain && (
+                <p className="mt-2 text-[13px] italic text-void-muted">{chip.phrase}</p>
+              )}
+              {chip && <StatusChipView chip={{ ...chip, path: chip.path || obsidianPath }} />}
+            </>
           )}
 
-          {obsidianPath && <ObsidianBadge path={obsidianPath} />}
+          {showCalendarActions && pendingCalendar && (
+            <div className="mt-3 flex flex-col gap-2">
+              <p className="text-[11px] text-paper-500">
+                {pendingCalendar.summary} · {pendingCalendar.when}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={onCalendarConfirm}
+                  className="min-h-[44px] px-3.5 text-sm font-medium text-white bg-sage-600 active:bg-sage-700 rounded-xl"
+                >
+                  {pendingCalendar.kind === 'reminder' ? 'Add reminder' : 'Add to calendar'}
+                </button>
+                <button
+                  type="button"
+                  onClick={onCalendarCancel}
+                  className="min-h-[44px] px-3.5 text-sm font-medium text-paper-700 bg-paper-100 active:bg-paper-200 rounded-xl"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Full-width pickers — outside the narrow message bubble */}
@@ -141,7 +227,7 @@ function AssistantBubble({ message }: { message: Message }) {
                   e.preventDefault()
                   openExternalUrl(item.url)
                 }}
-                className="flex items-start gap-2.5 bg-white border border-paper-100 rounded-xl px-3 py-3 shadow-card active:bg-paper-50 transition group min-h-[48px] touch-manipulation cursor-pointer w-full min-w-0"
+                className="flex items-start gap-2.5 bg-paper-50 border border-paper-100 rounded-xl px-3 py-3 shadow-card active:bg-paper-50 transition group min-h-[48px] touch-manipulation cursor-pointer w-full min-w-0"
               >
                 <div className="w-7 h-7 rounded-lg bg-paper-100 flex items-center justify-center text-sm shrink-0 mt-0.5">
                   {item.kind === 'paper' ? '📄' : '🔗'}
@@ -177,10 +263,25 @@ function AssistantBubble({ message }: { message: Message }) {
 }
 
 // ── Public export ─────────────────────────────────────────────────────────────
-export function MessageBubble({ message }: { message: Message }) {
+export function MessageBubble({
+  message,
+  showCalendarActions,
+  onCalendarConfirm,
+  onCalendarCancel,
+}: {
+  message: Message
+  showCalendarActions?: boolean
+  onCalendarConfirm?: () => void
+  onCalendarCancel?: () => void
+}) {
   return message.role === 'user' ? (
     <UserBubble message={message} />
   ) : (
-    <AssistantBubble message={message} />
+    <AssistantBubble
+      message={message}
+      showCalendarActions={showCalendarActions}
+      onCalendarConfirm={onCalendarConfirm}
+      onCalendarCancel={onCalendarCancel}
+    />
   )
 }

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 # Thought dumps only — five log types via append_to_inbox; never 01–05.
 INBOX_CAPTURE_RE = re.compile(
     r"\b("
-    r"remember this|capture this|note this|dump this|"
+    r"remember (?:this|these|that|today)|capture this|note this|dump this|"
     r"write this down|put this in (?:my )?inbox|add to inbox|"
     r"inbox this"
     r")\b",

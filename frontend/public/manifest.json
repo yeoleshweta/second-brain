@@ -1,12 +1,12 @@
 {
   "id": "/",
-  "name": "Second Brain",
-  "short_name": "Brain",
-  "description": "One chat, one vault, one daily note.",
+  "name": "The Void",
+  "short_name": "The Void",
+  "description": "One chat. Say remember this, and it stays.",
   "start_url": "/?source=pwa",
   "display": "standalone",
-  "background_color": "#FAF0E4",
-  "theme_color": "#6B3FA0",
+  "background_color": "#0B0B10",
+  "theme_color": "#0B0B10",
   "orientation": "portrait-primary",
   "icons": [
     {
@@ -22,7 +22,7 @@
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-512.png",
+      "src": "/icons/icon-maskable.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

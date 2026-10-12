@@ -116,7 +116,7 @@ export function ReadingReader({
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-paper-100">
       <div
-        className="shrink-0 bg-white border-b border-paper-200 px-4 py-3 flex items-center gap-3"
+        className="shrink-0 bg-paper-50 border-b border-paper-200 px-4 py-3 flex items-center gap-3"
         style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}
       >
         <button
@@ -193,7 +193,7 @@ export function ReadingReader({
           </div>
         ) : (
           <div ref={markdownScrollRef} className="h-full overflow-y-auto px-4 py-6">
-            <div className="max-w-2xl mx-auto bg-white rounded-2xl border border-paper-100 shadow-card px-5 py-6">
+            <div className="max-w-2xl mx-auto bg-paper-50 rounded-2xl border border-paper-100 shadow-card px-5 py-6">
               <div className="prose-chat text-sm leading-relaxed break-words">
                 <ReactMarkdown>{content?.body || ''}</ReactMarkdown>
               </div>

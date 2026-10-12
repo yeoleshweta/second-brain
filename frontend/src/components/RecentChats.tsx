@@ -62,7 +62,7 @@ export function RecentChats({
                 className={`w-full text-left rounded-xl px-3 py-2.5 transition min-h-[44px] border ${
                   active
                     ? 'bg-friends-frame/25 border-friends-frame/80 text-friends-purple-dark'
-                    : 'bg-white/70 border-paper-100 text-paper-600 hover:bg-paper-50 hover:border-paper-200'
+                    : 'bg-paper-50/70 border-paper-100 text-paper-600 hover:bg-paper-50 hover:border-paper-200'
                 }`}
               >
                 <p className="text-xs font-semibold truncate leading-snug">{session.title}</p>

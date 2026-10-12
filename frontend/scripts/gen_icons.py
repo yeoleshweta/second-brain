@@ -1,81 +1,91 @@
-"""Generate simple Central Perk PWA icons — purple background + orange couch only."""
+"""Home-screen icon: storm-red sky and the outlined THE VOID wordmark."""
 from __future__ import annotations
 
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-PURPLE = (107, 63, 160)
+SKY = (90, 15, 18)
+BG = (11, 11, 16)
+RED = (255, 69, 69, 255)
+FONT_PATH = Path(__file__).resolve().parent / "fonts" / "Cinzel-Variable.ttf"
 OUT = Path(__file__).resolve().parent.parent / "public" / "icons"
 
 
-def _draw_couch(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int]) -> None:
-    x0, y0, x1, y1 = box
-    w, h = x1 - x0, y1 - y0
-    cx = (x0 + x1) // 2
-
-    frame = (int(x0 + w * 0.04), int(y0 + h * 0.06), int(x1 - w * 0.04), int(y1 - h * 0.04))
-    draw.rounded_rectangle(frame, radius=max(4, w // 16), outline=(244, 208, 63), width=max(2, w // 64))
-
-    back_top = int(y0 + h * 0.22)
-    back_bot = int(y0 + h * 0.58)
-    draw.polygon(
-        [
-            (int(x0 + w * 0.12), back_bot),
-            (int(x0 + w * 0.12), back_top + h * 0.08),
-            (int(cx - w * 0.02), int(y0 + h * 0.14)),
-            (int(cx + w * 0.02), int(y0 + h * 0.14)),
-            (int(x1 - w * 0.12), back_top + h * 0.08),
-            (int(x1 - w * 0.12), back_bot),
-        ],
-        fill=(200, 80, 24),
-    )
-    draw.polygon(
-        [
-            (int(x0 + w * 0.16), back_bot - h * 0.04),
-            (int(x0 + w * 0.16), back_top + h * 0.14),
-            (int(cx), int(y0 + h * 0.18)),
-            (int(x1 - w * 0.16), back_top + h * 0.14),
-            (int(x1 - w * 0.16), back_bot - h * 0.04),
-        ],
-        fill=(232, 117, 26),
-    )
-
-    arm_w = int(w * 0.11)
-    arm_h = int(h * 0.28)
-    arm_y = int(y0 + h * 0.48)
-    draw.rounded_rectangle(
-        (int(x0 + w * 0.06), arm_y, int(x0 + w * 0.06) + arm_w, arm_y + arm_h),
-        radius=arm_w // 2,
-        fill=(184, 69, 16),
-    )
-    draw.rounded_rectangle(
-        (int(x1 - w * 0.06) - arm_w, arm_y, int(x1 - w * 0.06), arm_y + arm_h),
-        radius=arm_w // 2,
-        fill=(184, 69, 16),
-    )
-
-    seat_y = int(y0 + h * 0.62)
-    seat_h = int(h * 0.18)
-    left = (int(x0 + w * 0.22), seat_y, int(cx - w * 0.04), seat_y + seat_h)
-    right = (int(cx + w * 0.04), seat_y, int(x1 - w * 0.22), seat_y + seat_h)
-    draw.rounded_rectangle(left, radius=max(3, w // 32), fill=(217, 96, 20))
-    draw.rounded_rectangle(right, radius=max(3, w // 32), fill=(217, 96, 20))
+def _font(size: int) -> ImageFont.FreeTypeFont:
+    face = ImageFont.truetype(str(FONT_PATH), size)
+    face.set_variation_by_axes([700])
+    return face
 
 
-def render(size: int) -> Image.Image:
-    img = Image.new("RGB", (size, size), PURPLE)
-    draw = ImageDraw.Draw(img)
-    pad = int(size * 0.14)
-    _draw_couch(draw, (pad, pad, size - pad, size - pad))
+def _gradient(size: int) -> Image.Image:
+    img = Image.new("RGBA", (size, size))
+    pixels = img.load()
+    for y in range(size):
+        t = min(1.0, y / (size * 0.62))
+        color = tuple(int(a + (b - a) * t) for a, b in zip(SKY, BG)) + (255,)
+        for x in range(size):
+            pixels[x, y] = color
     return img
+
+
+def _draw_line(
+    base: Image.Image,
+    text: str,
+    y: int,
+    face: ImageFont.FreeTypeFont,
+    stroke: int,
+    gap: float,
+) -> None:
+    widths = [face.getlength(ch) for ch in text]
+    total = sum(widths) + gap * (len(text) - 1)
+    x = (base.width - total) / 2
+
+    glow = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow)
+    cursor = x
+    for ch, width in zip(text, widths):
+        glow_draw.text((cursor, y), ch, font=face, fill=(*RED[:3], 170))
+        cursor += width + gap
+    glow = glow.filter(ImageFilter.GaussianBlur(radius=max(2, base.width // 40)))
+    base.alpha_composite(glow)
+
+    draw = ImageDraw.Draw(base)
+    cursor = x
+    for ch, width in zip(text, widths):
+        draw.text(
+            (cursor, y),
+            ch,
+            font=face,
+            fill=(0, 0, 0, 0),
+            stroke_width=stroke,
+            stroke_fill=RED,
+        )
+        cursor += width + gap
+
+
+def render(size: int, *, inset: float = 1.0) -> Image.Image:
+    img = _gradient(size)
+    scale = inset
+    small = _font(max(12, int(size * 0.13 * scale)))
+    big = _font(max(18, int(size * 0.20 * scale)))
+    _draw_line(img, "THE", int(size * (0.5 - 0.20 * scale)), small, max(1, size // 170), size * 0.018 * scale)
+    _draw_line(img, "VOID", int(size * (0.5 - 0.02 * scale)), big, max(2, size // 120), size * 0.008 * scale)
+    return img.convert("RGB")
 
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    for name, px in (("icon-192", 192), ("icon-512", 512), ("apple-touch-icon", 180)):
+    files = {
+        "icon-192": (192, 1.0),
+        "icon-512": (512, 1.0),
+        "apple-touch-icon": (180, 1.0),
+        "void-touch-icon": (180, 1.0),
+        "icon-maskable": (512, 0.72),
+    }
+    for name, (px, inset) in files.items():
         path = OUT / f"{name}.png"
-        render(px).save(path, optimize=True)
+        render(px, inset=inset).save(path, optimize=True)
         print(f"wrote {path}")
 
 

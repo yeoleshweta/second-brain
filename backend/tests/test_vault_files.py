@@ -14,6 +14,8 @@ def vault_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     vault = tmp_path / "vault"
     vault.mkdir()
     monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(vault))
+    monkeypatch.setenv("GITHUB_VAULT_REPO", "")
+    monkeypatch.setenv("GITHUB_TOKEN", "")
     from src.config.settings import get_settings
 
     get_settings.cache_clear()

@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from googleapiclient.discovery import build
 from loguru import logger
@@ -26,7 +27,8 @@ class GoogleCalendarClient:
         creds = load_google_credentials()
         if not creds:
             raise RuntimeError(
-                "Google credentials missing. Run: uv run python -m src.integrations.google_calendar auth"
+                "Google credentials missing. "
+                "Run: uv run python -m src.integrations.google_calendar auth"
             )
         self._service = build("calendar", "v3", credentials=creds)
         self._calendar_id = get_settings().google_calendar_id
@@ -60,14 +62,27 @@ class GoogleCalendarClient:
         end: datetime,
         description: str = "",
         attendees: list[str] | None = None,
+        popup_minutes: int | None = None,
     ) -> dict:
+        tz_name = get_settings().app_timezone or "America/New_York"
+        tz = ZoneInfo(tz_name)
+
+        def _local_naive(dt: datetime) -> str:
+            aware = dt.replace(tzinfo=tz) if dt.tzinfo is None else dt.astimezone(tz)
+            return aware.replace(tzinfo=None).isoformat()
+
         body = {
             "summary": summary,
             "description": description,
-            "start": {"dateTime": start.isoformat()},
-            "end": {"dateTime": end.isoformat()},
+            "start": {"dateTime": _local_naive(start), "timeZone": tz_name},
+            "end": {"dateTime": _local_naive(end), "timeZone": tz_name},
             "attendees": [{"email": a} for a in (attendees or [])],
         }
+        if popup_minutes is not None:
+            body["reminders"] = {
+                "useDefault": False,
+                "overrides": [{"method": "popup", "minutes": popup_minutes}],
+            }
         logger.info("Creating calendar event: {}", summary)
         return await asyncio.to_thread(
             lambda: self._service.events()

@@ -68,7 +68,7 @@ export function SuggestionPicker({ items }: Props) {
         return (
           <div
             key={item.id}
-            className={`bg-white border rounded-xl shadow-card overflow-hidden transition w-full min-w-0 ${
+            className={`bg-paper-50 border rounded-xl shadow-card overflow-hidden transition w-full min-w-0 ${
               isSelected ? 'border-accent-300 ring-1 ring-accent-200' : 'border-paper-100'
             }`}
           >
@@ -156,11 +156,11 @@ export function SuggestionPicker({ items }: Props) {
             {isExpanded && item.pdf_preview_url && (
               <div className="border-t border-paper-100 bg-paper-50 px-3 pb-3 pt-2">
                 <p className="text-[10px] font-semibold text-paper-500 mb-2">PDF preview</p>
-                <div className="w-full rounded-lg border border-paper-200 overflow-hidden bg-white">
+                <div className="w-full rounded-lg border border-paper-200 overflow-hidden bg-paper-50">
                   <iframe
                     title={`Preview: ${item.title}`}
                     src={item.pdf_preview_url}
-                    className="w-full h-64 md:h-80 bg-white block"
+                    className="w-full h-64 md:h-80 bg-paper-50 block"
                   />
                 </div>
               </div>

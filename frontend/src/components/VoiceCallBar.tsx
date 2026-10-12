@@ -31,7 +31,7 @@ function labelFor(phase: VoicePhase): string {
 export function VoiceCallBar({ phase, level, error, onHangup, onTap }: Props) {
   const hot = phase === 'listening' && level > 0.12
   return (
-    <div className="mb-2 rounded-2xl border-2 border-friends-purple/40 bg-white px-3 py-2.5 shadow-card">
+    <div className="mb-2 rounded-2xl border-2 border-friends-purple/40 bg-paper-50 px-3 py-2.5 shadow-card">
       <div className="flex items-center gap-2">
         <button
           type="button"

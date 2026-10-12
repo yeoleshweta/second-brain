@@ -1,9 +1,67 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getRossSettings, getTodayUsage, patchRossSettings, apiFetch, probeOpenAi, probeClaude, type RossSettings } from '@/lib/api'
+import { getRossSettings, getTodayUsage, patchRossSettings, apiFetch, probeOpenAi, probeClaude, shareApiUrl, type RossSettings } from '@/lib/api'
 import { PlaidConnectSection } from '@/components/PlaidConnect'
 import { Mail, CheckCircle, AlertCircle, BookOpen, CalendarDays, DollarSign } from 'lucide-react'
-import { isVoiceRepliesEnabled, setVoiceRepliesEnabled } from '@/lib/voice'
+import { isPlainMode, isVoiceRepliesEnabled, setPlainMode, setVoiceRepliesEnabled } from '@/lib/voice'
 import type { AppView } from '@/types'
+
+function ShareShortcutCard() {
+  const [copied, setCopied] = useState<'url' | 'token' | ''>('')
+  const endpoint = shareApiUrl()
+  const token = import.meta.env.VITE_API_TOKEN || ''
+
+  async function copy(value: string, which: 'url' | 'token') {
+    if (!value) return
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(which)
+    } catch {
+      setCopied('')
+    }
+  }
+
+  return (
+    <div className="bg-paper-50 border border-paper-200 rounded-2xl p-4 space-y-3">
+      <h3 className="text-sm font-semibold text-paper-700">Instagram and LinkedIn</h3>
+      <p className="text-xs text-paper-500 leading-relaxed">
+        Share a post to a Shortcut. The link shows up in the Shares chat and in today’s void file.
+        The Mac has to be awake and on the same Wi-Fi.
+      </p>
+      <ol className="text-xs text-paper-600 leading-relaxed list-decimal pl-4 space-y-1">
+        <li>Shortcuts, tap +, then the name, and turn on Show in Share Sheet. Receive URLs and Text.</li>
+        <li>Add Get Contents of URL. Method POST. URL is the address below.</li>
+        <li>Header Authorization. Value is Bearer, a space, then the token you copy here.</li>
+        <li>Request Body JSON. Field url is Shortcut Input. Field text is Shortcut Input.</li>
+      </ol>
+      {endpoint ? (
+        <p className="text-xs font-mono break-all text-paper-700">{endpoint}</p>
+      ) : (
+        <p className="text-xs text-paper-500">
+          Open Settings on the iPhone to copy the share address. It looks like http://your-mac:5173/api/share.
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {endpoint && (
+          <button
+            type="button"
+            className="min-h-[44px] px-3 text-sm font-medium text-white bg-sage-600 rounded-xl"
+            onClick={() => void copy(endpoint, 'url')}
+          >
+            {copied === 'url' ? 'Copied address' : 'Copy address'}
+          </button>
+        )}
+        <button
+          type="button"
+          className="min-h-[44px] px-3 text-sm font-medium text-paper-700 bg-paper-100 rounded-xl"
+          onClick={() => void copy(token, 'token')}
+          disabled={!token}
+        >
+          {copied === 'token' ? 'Copied token' : 'Copy token'}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 // ── Gmail / Google connection card ───────────────────────────────────────────
 function GoogleConnectSection() {
@@ -29,7 +87,7 @@ function GoogleConnectSection() {
   }
 
   return (
-    <div className="bg-white border border-paper-200 rounded-2xl p-4 space-y-3">
+    <div className="bg-paper-50 border border-paper-200 rounded-2xl p-4 space-y-3">
       <div className="flex items-center gap-2">
         <Mail size={16} className="text-paper-500" />
         <h3 className="text-sm font-semibold text-paper-700">Gmail &amp; Google Calendar</h3>
@@ -43,14 +101,18 @@ function GoogleConnectSection() {
 
       {status === 'connected' && (
         <p className="text-xs text-sage-600 bg-sage-50 px-3 py-2 rounded-xl">
-          ✅ Connected — inbox and calendar are available
+          Connected — full calendar access, mail is read-only. Ask “what’s on my calendar”,
+          “unread email”, or “organize my day”. Say “remind me on October 20 at 9am to …”
+          and tap Add reminder. The iPhone alert comes from the Calendar app, so turn on
+          Calendar notifications. New events wait until you tap Add.
         </p>
       )}
 
       {status === 'disconnected' && (
         <div className="space-y-2">
           <p className="text-xs text-paper-500">
-            Connect your Google account so chat can read your calendar, upcoming meetings, and important emails.
+            Connect Google on the Mac app so chat can add calendar events after you confirm.
+            Meetings and mail are not dumped into the vault — only takeaways you approve in Review.
           </p>
           <button
             onClick={startAuth}
@@ -94,7 +156,7 @@ function ClaudeKeyCard() {
   }, [])
 
   return (
-    <div className="bg-white border border-paper-200 rounded-2xl p-4 space-y-2">
+    <div className="bg-paper-50 border border-paper-200 rounded-2xl p-4 space-y-2">
       <h3 className="text-sm font-semibold text-paper-700">Claude</h3>
       {state === 'loading' && <p className="text-xs text-paper-400">Checking API key…</p>}
       {state === 'ok' && (
@@ -133,7 +195,7 @@ function OpenAiKeyCard() {
   }, [])
 
   return (
-    <div className="bg-white border border-paper-200 rounded-2xl p-4 space-y-2">
+    <div className="bg-paper-50 border border-paper-200 rounded-2xl p-4 space-y-2">
       <h3 className="text-sm font-semibold text-paper-700">OpenAI</h3>
       {state === 'loading' && <p className="text-xs text-paper-400">Checking API key…</p>}
       {state === 'ok' && (
@@ -154,11 +216,35 @@ function OpenAiKeyCard() {
   )
 }
 
+function PlainModeToggle() {
+  const [on, setOn] = useState(isPlainMode)
+  return (
+    <div className="bg-paper-50 border border-paper-200 rounded-2xl p-4 space-y-2">
+      <h3 className="text-sm font-semibold text-paper-700">Lights on</h3>
+      <p className="text-xs text-paper-500 leading-relaxed">
+        Turns off the glow, the typing lights, and Eleven’s phrasing. Status chips stay.
+      </p>
+      <label className="flex items-center justify-between min-h-[44px] text-sm text-paper-700">
+        Lights on
+        <input
+          type="checkbox"
+          className="w-5 h-5"
+          checked={on}
+          onChange={(e) => {
+            setPlainMode(e.target.checked)
+            setOn(e.target.checked)
+          }}
+        />
+      </label>
+    </div>
+  )
+}
+
 function VoiceRepliesToggle() {
   const [on, setOn] = useState(isVoiceRepliesEnabled)
 
   return (
-    <div className="bg-white border border-paper-200 rounded-2xl p-4 space-y-2">
+    <div className="bg-paper-50 border border-paper-200 rounded-2xl p-4 space-y-2">
       <h3 className="text-sm font-semibold text-paper-700">Read replies aloud</h3>
       <p className="text-xs text-paper-500 leading-relaxed">
         Talk mode (the mic) already speaks replies. This switch auto-plays typed chats too.
@@ -236,7 +322,7 @@ export function SettingsView({ onOpenView }: { onOpenView?: (view: AppView) => v
         {onOpenView && (
           <>
             <h3 className="text-xs font-bold text-paper-400 uppercase tracking-widest px-1">Tools</h3>
-            <div className="bg-white border border-paper-200 rounded-2xl p-2 space-y-1">
+            <div className="bg-paper-50 border border-paper-200 rounded-2xl p-2 space-y-1">
               {(
                 [
                   { id: 'reading' as const, icon: <BookOpen size={16} />, label: 'Reading list' },
@@ -261,14 +347,16 @@ export function SettingsView({ onOpenView }: { onOpenView?: (view: AppView) => v
         <h3 className="text-xs font-bold text-paper-400 uppercase tracking-widest px-1">Voice</h3>
         <ClaudeKeyCard />
         <OpenAiKeyCard />
+        <PlainModeToggle />
         <VoiceRepliesToggle />
 
         {/* ── Connections ──────────────────────────────────── */}
         <h3 className="text-xs font-bold text-paper-400 uppercase tracking-widest px-1">Connections</h3>
         <GoogleConnectSection />
+        <ShareShortcutCard />
         <PlaidConnectSection />
 
-        <div className="bg-white border border-paper-200 rounded-2xl p-4 space-y-3">
+        <div className="bg-paper-50 border border-paper-200 rounded-2xl p-4 space-y-3">
           <h3 className="text-sm font-semibold text-paper-700">Reading & practice</h3>
           <label className="block text-sm text-paper-700">
             Daily reading goal (minutes)
@@ -300,7 +388,7 @@ export function SettingsView({ onOpenView }: { onOpenView?: (view: AppView) => v
               ))}
             </div>
             <button
-              className="mt-3 text-sm px-4 py-3 rounded-xl bg-paper-800 text-white disabled:opacity-50 min-h-[44px] touch-manipulation active:scale-[0.99]"
+              className="mt-3 text-sm px-4 py-3 rounded-xl bg-accent-500 text-white disabled:opacity-50 min-h-[44px] touch-manipulation active:scale-[0.99]"
               disabled={saving}
               onClick={() => {
                 const next = prompt('Add skill')
@@ -314,7 +402,7 @@ export function SettingsView({ onOpenView }: { onOpenView?: (view: AppView) => v
           </div>
         </div>
 
-        <div className="bg-white border border-paper-200 rounded-2xl p-4 space-y-3">
+        <div className="bg-paper-50 border border-paper-200 rounded-2xl p-4 space-y-3">
           <h3 className="text-sm font-semibold text-paper-700">Quiet hours</h3>
           <div className="grid grid-cols-2 gap-3">
             <input
@@ -334,7 +422,7 @@ export function SettingsView({ onOpenView }: { onOpenView?: (view: AppView) => v
           </div>
         </div>
 
-        <div className="bg-white border border-paper-200 rounded-2xl p-4 space-y-2">
+        <div className="bg-paper-50 border border-paper-200 rounded-2xl p-4 space-y-2">
           <h3 className="text-sm font-semibold text-paper-700">Nudge channels</h3>
           {toggles.map(({ key, label }) => (
             <label key={key} className="flex items-center justify-between text-sm text-paper-700 min-h-[48px] py-1 touch-manipulation">
@@ -351,7 +439,7 @@ export function SettingsView({ onOpenView }: { onOpenView?: (view: AppView) => v
           ))}
         </div>
 
-        <div className="bg-white border border-paper-200 rounded-2xl p-4">
+        <div className="bg-paper-50 border border-paper-200 rounded-2xl p-4">
           <h3 className="text-sm font-semibold text-paper-700">Usage today</h3>
           <p className="text-xs text-paper-500 mt-1">
             Estimated cost: ${usage?.estimated_cost_usd.toFixed(4) || '0.0000'} · {usage?.total_tokens || 0} tokens

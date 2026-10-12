@@ -13,7 +13,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       // During dev, the service worker is active so offline shell works
       devOptions: { enabled: true },
-      includeAssets: ['icons/apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png', 'logo.svg'],
+      includeAssets: ['icons/void-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable.png', 'logo.svg'],
       // What the service worker pre-caches at install time
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
@@ -34,13 +34,13 @@ export default defineConfig({
       },
       manifest: {
         id: '/',
-        name: 'Second Brain',
-        short_name: 'Brain',
-        description: 'One chat, one vault, one daily note.',
+        name: 'The Void',
+        short_name: 'The Void',
+        description: 'One chat. Say remember this, and it stays.',
         start_url: '/?source=pwa',
         display: 'standalone',
-        background_color: '#FAF0E4',
-        theme_color: '#6B3FA0',
+        background_color: '#0B0B10',
+        theme_color: '#0B0B10',
         orientation: 'portrait-primary',
         icons: [
           {
@@ -56,7 +56,7 @@ export default defineConfig({
             purpose: 'any',
           },
           {
-            src: '/icons/icon-512.png',
+            src: '/icons/icon-maskable.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',

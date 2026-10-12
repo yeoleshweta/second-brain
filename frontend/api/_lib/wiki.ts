@@ -1,5 +1,5 @@
-import { blobConfigured, listPaths, readText, writeText } from './blob'
-import { completeClaude } from './claude'
+import { blobConfigured, listPaths, readText, writeText } from './blob.js'
+import { completeClaude } from './claude.js'
 
 const INBOX_PREFIX = 'vault/Inbox/'
 const WIKI_DEST = ['Notes/', 'People/', 'Projects/', 'Concepts/', 'Briefings/'] as const

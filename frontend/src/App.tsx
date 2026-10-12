@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { MessageCircle, X, Scroll, Settings, History, Brain, Inbox } from 'lucide-react'
+import { MessageCircle, X, Scroll, Settings, History, Inbox } from 'lucide-react'
 import { Sidebar } from '@/components/Sidebar'
 import { MessageBubble } from '@/components/MessageBubble'
 import { useChat } from '@/hooks/useChat'
@@ -12,10 +12,9 @@ import FinanceDashboard from '@/components/FinanceDashboard'
 import { SettingsView } from '@/components/SettingsView'
 import { ReviewInbox } from '@/components/ReviewInbox'
 import { RecentChats } from '@/components/RecentChats'
-import { BrandHeader } from '@/components/BrandHeader'
+import { VoidWordmark } from '@/components/BrandHeader'
 import { getMorningBriefLatest, listWikiPending } from '@/lib/api'
-import { isVoiceRepliesEnabled, speakReply } from '@/lib/voice'
-import { CAPTURE_HINTS } from '@/agents'
+import { isPlainMode, isVoiceRepliesEnabled, speakReply } from '@/lib/voice'
 import type { AppView, Attachment } from '@/types'
 
 type View = AppView
@@ -24,7 +23,7 @@ type View = AppView
 function BriefBanner({ content, onDismiss }: { content: string; onDismiss: () => void }) {
   const lines = content.split('\n').filter(Boolean).slice(0, 4)
   return (
-    <div className="bg-white border border-paper-200 rounded-2xl p-4 mb-4 relative shadow-card">
+    <div className="bg-paper-50 border border-paper-200 rounded-2xl p-4 mb-4 relative shadow-card">
       <button
         onClick={onDismiss}
         className="absolute top-2 right-2 touch-target flex items-center justify-center rounded-full bg-paper-100 active:bg-paper-200 transition text-paper-600"
@@ -33,8 +32,8 @@ function BriefBanner({ content, onDismiss }: { content: string; onDismiss: () =>
         <X size={14} />
       </button>
       <div className="flex items-center gap-2 mb-2 pr-8">
-        <div className="w-6 h-6 rounded-full bg-paper-800 flex items-center justify-center">
-          <Scroll size={12} className="text-paper-50" />
+        <div className="w-6 h-6 rounded-full bg-accent-500 flex items-center justify-center">
+          <Scroll size={12} className="text-white" />
         </div>
         <span className="text-[10px] font-bold text-paper-500 tracking-widest uppercase">
           Morning brief
@@ -48,37 +47,14 @@ function BriefBanner({ content, onDismiss }: { content: string; onDismiss: () =>
 }
 
 // ── Empty / intro state ───────────────────────────────────────────────────────
-function EmptyState({
-  onSend,
-}: {
-  onSend: (msg: string) => void
-}) {
+function EmptyState() {
   return (
-    <div className="py-10 md:py-16 px-2 flex flex-col items-center text-center">
-      <div className="w-14 h-14 rounded-2xl bg-paper-800 text-paper-50 flex items-center justify-center mb-4">
-        <Brain size={28} strokeWidth={1.5} />
-      </div>
-      <h1 className="text-xl md:text-2xl font-semibold text-paper-800 tracking-tight">
-        Second Brain
-      </h1>
-      <p className="mt-2 text-sm text-paper-500 max-w-sm leading-relaxed">
-        One chat, one vault. Talk, paste a meeting, or take a photo. Everything waits in Review before it is filed.
-      </p>
-      <p className="mt-2 text-[11px] text-paper-400 font-mono">
-        Inbox → you approve → Notes / People / Projects / Concepts
-      </p>
-      <div className="mt-6 flex flex-wrap justify-center gap-2">
-        {CAPTURE_HINTS.map(({ label, prompt }) => (
-          <button
-            key={prompt}
-            type="button"
-            onClick={() => onSend(prompt)}
-            className="px-3.5 py-2 text-sm font-medium text-paper-700 bg-white border border-paper-200 rounded-xl shadow-card active:bg-paper-100 min-h-[44px]"
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+    <div className="py-16 px-6 flex flex-col items-center text-center">
+      <h1><VoidWordmark className="h-14 w-[280px]" /></h1>
+      {!isPlainMode() && (
+        <p className="mt-6 text-sm italic text-void-muted">Quiet out there tonight.</p>
+      )}
+      <p className="mt-2 text-xs text-void-muted">Say ‘remember this’ to keep something.</p>
     </div>
   )
 }
@@ -87,42 +63,73 @@ function EmptyState({
 function MobileHeader({
   view,
   showHistory,
+  unsortedCount,
   onToggleHistory,
+  onOpenSettings,
+  onOpenUnsorted,
   onLogoClick,
 }: {
   view: View
   showHistory: boolean
+  unsortedCount: number
   onToggleHistory: () => void
+  onOpenSettings: () => void
+  onOpenUnsorted: () => void
   onLogoClick: () => void
 }) {
   const label =
     view === 'reading' ? 'Reading'
     : view === 'agenda' ? 'Agenda'
     : view === 'finance' ? 'Finance'
-    :     view === 'settings' ? 'Settings'
+    : view === 'settings' ? 'Settings'
     : view === 'review' ? 'Review'
     : null
   return (
-    <header className="md:hidden shrink-0 bg-white/95 backdrop-blur-md border-b border-paper-200 flex items-center justify-between px-4 py-2 pt-safe min-h-[48px] sticky top-0 z-20">
-      <BrandHeader compact onLogoClick={onLogoClick} />
-      <div className="flex items-center gap-2">
+    <header className="md:hidden relative shrink-0 bg-transparent flex items-center justify-between px-2 py-2 pt-safe min-h-[52px] sticky top-0 z-20">
+      <button
+        type="button"
+        onClick={onOpenSettings}
+        className="touch-target flex items-center justify-center rounded-full text-void-text"
+        aria-label="Settings"
+      >
+        <Settings size={20} />
+      </button>
+      {view === 'chat' ? (
+        <button
+          type="button"
+          onClick={onLogoClick}
+          className="absolute left-1/2 -translate-x-1/2"
+          aria-label="Start new chat"
+        >
+          <VoidWordmark className="h-7 w-[168px]" />
+        </button>
+      ) : (
+        <span className="absolute left-1/2 -translate-x-1/2 text-sm font-medium text-void-muted">{label}</span>
+      )}
+      <div className="flex items-center">
         {view === 'chat' && (
           <button
             type="button"
             onClick={onToggleHistory}
-            className={`touch-target flex items-center justify-center rounded-full transition ${
-              showHistory
-                ? 'bg-paper-200 text-paper-800'
-                : 'bg-paper-100 text-paper-500 active:bg-paper-200'
+            className={`touch-target flex items-center justify-center rounded-full ${
+              showHistory ? 'text-void-text' : 'text-void-muted'
             }`}
             aria-label="Recent chats"
           >
             <History size={18} />
           </button>
         )}
-        {label && (
-          <span className="text-xs font-semibold text-paper-500">{label}</span>
-        )}
+        <button
+          type="button"
+          onClick={onOpenUnsorted}
+          className="touch-target inline-flex items-center justify-center"
+          aria-label={`${unsortedCount} unsorted`}
+        >
+          <span className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-void-upside text-sm text-void-text">
+            <span className="w-2 h-2 rounded-full bg-void-upside" aria-hidden />
+            {unsortedCount}
+          </span>
+        </button>
       </div>
     </header>
   )
@@ -144,19 +151,19 @@ function BottomNav({
     { id: 'settings', icon: <Settings size={20} />,      label: 'Settings' },
   ]
   return (
-    <nav className="md:hidden shrink-0 bg-white/95 backdrop-blur-md border-t border-paper-200 flex pb-safe">
+    <nav className="md:hidden shrink-0 bg-paper-50/95 backdrop-blur-md border-t border-paper-200 flex pb-safe">
       {tabs.map(({ id, icon, label }) => (
         <button
           key={id}
           onClick={() => onChange(id)}
           className={`flex-1 flex flex-col items-center justify-center gap-0.5 pt-1.5 pb-1 text-[10px] font-medium transition min-h-[52px] active:scale-95 touch-manipulation ${
-            view === id ? 'text-paper-800' : 'text-paper-400'
+            view === id ? 'text-accent-400' : 'text-paper-400'
           }`}
         >
-          <span className={`relative transition ${view === id ? 'text-paper-800' : 'text-paper-400'}`}>
+          <span className={`relative transition ${view === id ? 'text-accent-400 drop-shadow-void' : 'text-paper-400'}`}>
             {icon}
             {id === 'review' && reviewCount > 0 && (
-              <span className="absolute -top-1 -right-2 min-w-[14px] h-[14px] px-0.5 rounded-full bg-amber-500 text-white text-[9px] leading-[14px]">
+              <span className="absolute -top-1 -right-2 min-w-[14px] h-[14px] px-0.5 rounded-full bg-void-static text-[#1a100c] text-[9px] leading-[14px]">
                 {reviewCount}
               </span>
             )}
@@ -265,6 +272,8 @@ function App() {
     send(text, attachments)
   }
 
+  const lastCalendarId = [...messages].reverse().find((m) => m.role === 'assistant' && m.pendingCalendar)?.id
+
   const handleSelectSession = (id: string) => {
     setShowMobileHistory(false)
     void loadSession(id)
@@ -281,7 +290,7 @@ function App() {
   }
 
   return (
-    <div className="h-[100dvh] min-h-0 flex overflow-hidden bg-paper-50 relative">
+    <div className="h-[100dvh] min-h-0 flex overflow-hidden bg-transparent relative">
       {/* Desktop sidebar */}
       <Sidebar
         activeView={view}
@@ -299,7 +308,10 @@ function App() {
         <MobileHeader
           view={view}
           showHistory={showMobileHistory}
+          unsortedCount={messages.filter((m) => m.role === 'assistant' && /Unsorted/.test(m.content)).length}
           onToggleHistory={() => setShowMobileHistory((v) => !v)}
+          onOpenSettings={() => setView('settings')}
+          onOpenUnsorted={() => setView('review')}
           onLogoClick={handleNewChat}
         />
 
@@ -307,7 +319,7 @@ function App() {
         {view === 'chat' ? (
           <>
             {showMobileHistory && (
-              <div className="md:hidden shrink-0 border-b border-paper-200 bg-white/95 px-3 py-3 backdrop-blur-sm">
+              <div className="md:hidden shrink-0 border-b border-paper-200 bg-paper-50/95 px-3 py-3 backdrop-blur-sm">
                 <RecentChats
                   sessions={sessions}
                   activeSessionId={sessionId}
@@ -319,7 +331,7 @@ function App() {
             )}
             {/* Scrollable messages */}
             <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto mobile-scroll">
-              <div className="max-w-2xl mx-auto px-3 md:px-5 py-3 md:py-4 pb-6">
+              <div className="max-w-[720px] mx-auto px-3 md:px-5 py-3 md:py-4 pb-6">
                 {loading ? (
                   <p className="text-sm text-paper-400 text-center py-8">Loading your chats…</p>
                 ) : (
@@ -328,12 +340,12 @@ function App() {
                   <button
                     type="button"
                     onClick={() => setView('review')}
-                    className="w-full mb-4 text-left bg-amber-50 border border-amber-200 rounded-2xl p-3.5"
+                    className="w-full mb-4 text-left bg-paper-100 border border-paper-300 rounded-2xl p-3.5"
                   >
-                    <p className="text-xs font-semibold text-amber-900">
+                    <p className="text-xs font-semibold text-gold-300">
                       {reviewCount} note{reviewCount === 1 ? '' : 's'} waiting in Review
                     </p>
-                    <p className="text-[11px] text-amber-800 mt-0.5">
+                    <p className="text-[11px] text-paper-700 mt-0.5">
                       Approve to file into the wiki. Nothing is added until you say yes.
                     </p>
                   </button>
@@ -345,11 +357,17 @@ function App() {
                   />
                 )}
                 {messages.length === 0 ? (
-                  <EmptyState onSend={handleSend} />
+                  <EmptyState />
                 ) : (
                   <div className="space-y-1 pb-2">
                     {messages.map((m) => (
-                      <MessageBubble key={m.id} message={m} />
+                      <MessageBubble
+                        key={m.id}
+                        message={m}
+                        showCalendarActions={m.id === lastCalendarId && !sending}
+                        onCalendarConfirm={() => handleSend('yes')}
+                        onCalendarCancel={() => handleSend('no')}
+                      />
                     ))}
                   </div>
                 )}

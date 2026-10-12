@@ -12,9 +12,9 @@ from sqlmodel import Session, SQLModel, create_engine
 from src.agents._base import is_inbox_capture, is_inbox_thought_dump
 from src.config.settings import get_settings
 from src.integrations.obsidian import (
-    DAILY_NOTE_DIR,
-    UNSORTED_DIR,
+    VOID_DIR,
     ObsidianClient,
+    VaultConflictError,
     _assert_writable,
     classify_log_type,
 )
@@ -33,6 +33,8 @@ def vault(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # vault folder. No mock Local REST API server.
     monkeypatch.setenv("OBSIDIAN_API_KEY", "test-not-a-live-key")
     monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(root))
+    monkeypatch.setenv("GITHUB_VAULT_REPO", "")
+    monkeypatch.setenv("GITHUB_TOKEN", "")
     get_settings.cache_clear()
     yield root
     get_settings.cache_clear()
@@ -65,6 +67,7 @@ async def test_classify_ignores_friends_names() -> None:
 
 def test_inbox_capture_phrases() -> None:
     assert is_inbox_capture("remember this: I like oat milk")
+    assert is_inbox_capture("remember these books to read")
     assert is_inbox_capture("write this down — dentist Friday")
     assert is_inbox_capture("add to inbox: buy oat milk")
     assert not is_inbox_capture("what's a good walk idea")
@@ -89,8 +92,9 @@ def test_protected_paths_refused() -> None:
     ):
         with pytest.raises(PermissionError, match="protected"):
             _assert_writable(path)
-    _assert_writable("00-Inbox/Daily/2026-09-30.md")
-    _assert_writable("00-Inbox/Unsorted/raw.md")
+    with pytest.raises(PermissionError, match="protected"):
+        _assert_writable("00-Inbox/Daily/2026-09-30.md")
+    _assert_writable("00-Inbox/Void/2026-09-30.md")
     _assert_writable("99-System/Logs/2026-09-30.md")
 
 
@@ -113,19 +117,16 @@ async def test_append_to_inbox_writes_under_log(vault: Path) -> None:
     before_skills = skills.read_text(encoding="utf-8")
     before_context = context.read_text(encoding="utf-8")
     today = datetime.now().strftime("%Y-%m-%d")
-    daily = vault / DAILY_NOTE_DIR / f"{today}.md"
-    daily.parent.mkdir(parents=True)
+    void = vault / VOID_DIR / f"{today}.md"
+    void.parent.mkdir(parents=True)
     prior = (
-        f"---\ntype: daily\ndate: {today}\ncreated: {today}T07:00\nmood:\nenergy:\n---\n\n"
+        f"---\ntype: void\ndate: {today}\n---\n\n"
         f"# {today}\n\n"
         "## Log\n"
         "- 07:00 💡 **idea** :: keep this line [src:: user]\n\n"
-        "## Notes\n"
-        "do not touch\n\n"
-        "## Review\n"
-        "- [ ] Triage captures\n"
+        "## Unsorted\n"
     )
-    daily.write_text(prior, encoding="utf-8")
+    void.write_text(prior, encoding="utf-8")
 
     async with ObsidianClient() as client:
         path = await client.append_to_inbox("I ate eggs this morning", source="user")
@@ -143,15 +144,13 @@ async def test_append_to_inbox_writes_under_log(vault: Path) -> None:
             with pytest.raises(PermissionError):
                 await client.write_note(blocked, "hacked")
 
-    assert path == f"{DAILY_NOTE_DIR}/{today}.md"
+    assert path == f"{VOID_DIR}/{today}.md"
     body = (vault / path).read_text(encoding="utf-8")
     assert "- 07:00 💡 **idea** :: keep this line [src:: user]" in body
-    assert "do not touch" in body
     assert "**food**" in body
     assert "eggs this morning" in body
     assert "[src:: user]" in body
-    assert "## Notes" in body
-    assert body.index("eggs this morning") < body.index("## Notes")
+    assert body.index("eggs this morning") < body.index("## Unsorted")
     assert skills.read_text(encoding="utf-8") == before_skills
     assert context.read_text(encoding="utf-8") == before_context
 
@@ -189,15 +188,37 @@ async def test_append_failure_logs_to_system(vault: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_void_append_retries_sha_conflict(vault: Path) -> None:
+    async with ObsidianClient() as client:
+        real_put = client._backend.put
+        calls = {"n": 0}
+
+        async def flaky_put(path: str, content: str) -> None:
+            calls["n"] += 1
+            if calls["n"] == 1 and "Void" in path:
+                raise VaultConflictError(path)
+            await real_put(path, content)
+
+        with patch.object(client._backend, "put", flaky_put):
+            path = await client.append_to_inbox("remember this: I ate eggs")
+
+    assert calls["n"] == 2
+    body = (vault / path).read_text(encoding="utf-8")
+    assert "**food**" in body
+
+
+@pytest.mark.asyncio
 async def test_append_to_inbox_unsorted_when_unparseable(vault: Path) -> None:
     async with ObsidianClient() as client:
         path = await client.append_to_inbox("I like oat milk", source="user")
 
-    assert path.startswith(f"{UNSORTED_DIR}/")
+    today = datetime.now().strftime("%Y-%m-%d")
+    assert path == f"{VOID_DIR}/{today}.md"
     body = (vault / path).read_text(encoding="utf-8")
     assert "I like oat milk" in body
-    today = datetime.now().strftime("%Y-%m-%d")
-    daily = vault / DAILY_NOTE_DIR / f"{today}.md"
+    assert "no type matched" in body
+    assert "## Unsorted" in body
+    daily = vault / "00-Inbox" / "Daily" / f"{today}.md"
     assert not daily.exists()
 
 
@@ -207,10 +228,10 @@ async def test_handle_message_writes_inbox_not_wiki_folders(vault: Path) -> None
         result = await handle_message("remember this: 30 min walk")
 
     path = str(result["obsidian_path"])
-    assert path.startswith("Inbox/")
-    assert "Review" in (result.get("reply") or "")
+    assert path.startswith(f"{VOID_DIR}/")
+    assert "Saved under Log" in (result.get("reply") or "")
     body = (vault / path).read_text(encoding="utf-8")
-    assert "status: inbox" in body or "status: inbox" in body.replace('"', "")
+    assert "**exercise**" in body
     assert "30 min walk" in body
     assert not (vault / "Notes").exists() or not any((vault / "Notes").glob("*.md"))
     assert not (vault / "02-Health").exists()
@@ -223,7 +244,7 @@ async def test_handle_log_workout_uses_inbox_not_health_folder(vault: Path) -> N
     result = await handle_log_workout("I did 30 min yoga this morning", None)  # type: ignore[arg-type]
 
     today = datetime.now().strftime("%Y-%m-%d")
-    expected = f"{DAILY_NOTE_DIR}/{today}.md"
+    expected = f"{VOID_DIR}/{today}.md"
     assert result["obsidian_path"] == expected
     assert "Local REST API" not in result["reply"]
     assert "Saved to" in result["reply"]
@@ -240,13 +261,66 @@ async def test_handle_message_does_not_touch_profile(vault: Path) -> None:
         result = await handle_message("remember this: idea — empathy at scale")
 
     assert result["intent"] == "general"
-    assert str(result["obsidian_path"]).startswith("Inbox/")
+    assert str(result["obsidian_path"]).startswith(f"{VOID_DIR}/")
     body = (vault / str(result["obsidian_path"])).read_text(encoding="utf-8")
     assert "empathy at scale" in body
     skills = (vault / "Career" / "Profile" / "skills.md").read_text(encoding="utf-8")
     context = (vault / "Context" / "career.md").read_text(encoding="utf-8")
     assert skills == "# Skills\nPython\n"
     assert context == "User-owned routing notes.\n"
+
+
+@pytest.mark.asyncio
+async def test_reply_sees_capture_outcome_and_matching_note(vault: Path) -> None:
+    people = vault / "People"
+    people.mkdir()
+    (people / "Priya.md").write_text(
+        "# Priya\n\nPriya likes tea in the morning.\n",
+        encoding="utf-8",
+    )
+    mock = AsyncMock(return_value="Priya likes tea.")
+    with patch("src.integrations.claude.complete", mock):
+        saved = await handle_message("remember this I ate eggs for breakfast")
+        asked = await handle_message("what does Priya like")
+
+    saved_system = mock.await_args_list[0].kwargs["system"]
+    asked_system = mock.await_args_list[1].kwargs["system"]
+    assert "You are Eleven" in saved_system
+    assert "PLAIN_MODE is on" not in saved_system
+    assert "Saved under Log" in saved_system
+    assert "food" in saved_system
+    assert "People/Priya.md" in asked_system
+    assert "Priya likes tea" in asked_system
+    assert "Saved under Log" in (saved.get("reply") or "")
+    assert "Not saved" not in (asked.get("reply") or "")
+    assert "Priya likes tea." in (asked.get("reply") or "")
+
+
+@pytest.mark.asyncio
+async def test_remember_these_saves_a_reading_list(vault: Path) -> None:
+    msg = (
+        "remember these books and resources to read/listen\n"
+        "Check for support roles\n"
+        "Lucy Darwin\n"
+        "Working minds - book on cognitive analysis\n"
+        "Information architecture to simple things\n"
+        "Tools - figma gum loop notebooklm\n"
+        "Condense.io"
+    )
+    with patch(
+        "src.integrations.claude.complete",
+        AsyncMock(return_value="Saved that reading list: Lucy Darwin and the tools."),
+    ):
+        result = await handle_message(msg)
+
+    assert result.get("pending_calendar") is None
+    assert "day and time" not in (result.get("reply") or "")
+    assert "Not saved" not in (result.get("reply") or "")
+    assert "Saved under Unsorted" in (result.get("reply") or "")
+    body = (vault / str(result["obsidian_path"])).read_text(encoding="utf-8")
+    assert "Lucy Darwin" in body
+    assert "Condense.io" in body
+    assert "book on cognitive analysis" in body
 
 
 @pytest.mark.asyncio
@@ -258,9 +332,11 @@ async def test_handle_message_plain_chat_still_queues_review(vault: Path) -> Non
         result = await handle_message("what's a good walk idea")
 
     assert result["intent"] == "general"
-    assert str(result["obsidian_path"]).startswith("Inbox/")
-    body = (vault / str(result["obsidian_path"])).read_text(encoding="utf-8")
-    assert "good walk idea" in body
+    assert result.get("obsidian_path") is None
+    assert "Not saved" not in (result.get("reply") or "")
+    assert "Try a loop around the park." in (result.get("reply") or "")
+    today = datetime.now().strftime("%Y-%m-%d")
+    assert not (vault / VOID_DIR / f"{today}.md").exists()
     assert not list((vault / "Projects").glob("*.md")) if (vault / "Projects").exists() else True
 
 
@@ -279,7 +355,9 @@ async def test_handle_message_friends_names_stay_general(vault: Path) -> None:
     ):
         result = await handle_message("Rachel what should I work on next")
     assert result["intent"] == "general"
-    assert str(result["obsidian_path"]).startswith("Inbox/")
+    assert result.get("obsidian_path") is None
+    assert "Not saved" not in (result.get("reply") or "")
+    assert "Hey — got it." in (result.get("reply") or "")
     assert not (vault / "01-Knowledge").exists() or not any((vault / "01-Knowledge").rglob("*.md"))
 
 
@@ -314,7 +392,9 @@ async def test_chat_sse_handler_mocked() -> None:
         chat_history: list | None = None,
         *,
         session_id: str | None = None,
+        plain_mode: bool = False,
     ) -> dict:
+        del session_id, plain_mode, attachments, chat_history
         return {
             "user_message": message,
             "reply": "mocked reply",

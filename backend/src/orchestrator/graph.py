@@ -25,6 +25,7 @@ class AgentState(TypedDict, total=False):
     suggest_items: list[dict]
     book_items: list[dict]
     obsidian_path: str | None
+    pending_calendar: dict | None
     metadata: dict
 
 
@@ -57,6 +58,7 @@ async def handle_message(
     chat_history: list[dict] | None = None,
     *,
     session_id: str | None = None,
+    plain_mode: bool = False,
 ) -> AgentState:
     history = list(chat_history or [])
     if session_id and not history:
@@ -67,26 +69,16 @@ async def handle_message(
             history = chat_store.recent_history(db, session_id, limit=20)
 
     from src.services.media_ingest import enrich_user_message
-    from src.services.wiki import ingest_raw, title_from_message
 
     attachments = attachments or []
     enriched = await enrich_user_message(message, attachments)
-    inbox_path: str | None = None
-    if (enriched or "").strip():
-        try:
-            inbox_path = await ingest_raw(
-                title=title_from_message(enriched),
-                body=enriched,
-                source="chat",
-            )
-        except Exception as exc:
-            logger.warning("Wiki ingest skipped: {}", type(exc).__name__)
     try:
         result = await APP.ainvoke(
             {
                 "user_message": enriched,
                 "attachments": attachments,
                 "chat_history": history,
+                "metadata": {"plain_mode": plain_mode},
             }
         )
     except Exception as exc:
@@ -101,14 +93,6 @@ async def handle_message(
             "intent": "general",
             "obsidian_path": None,
         }
-
-    if inbox_path:
-        result["obsidian_path"] = inbox_path
-        reply = (result.get("reply") or "").rstrip()
-        if inbox_path not in reply:
-            result["reply"] = (
-                f"{reply}\n\nSaved to `{inbox_path}` — open Review to approve before it is filed."
-            )
 
     result["user_message"] = enriched
     result["intent"] = "general"

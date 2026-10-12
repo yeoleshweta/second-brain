@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Send, X, Paperclip, Mic, Camera, PhoneOff } from 'lucide-react'
 import type { Attachment } from '@/types'
 import { uploadFile } from '@/lib/api'
-import { micSupported, transcribeUpload } from '@/lib/voice'
+import { micSupported, isPlainMode, transcribeUpload } from '@/lib/voice'
 import type { VoicePhase } from '@/lib/voice'
 
 interface VoiceControls {
@@ -121,7 +121,7 @@ export function ChatInput({ onSend, disabled, voice }: Props) {
 
   return (
     <div
-      className="bg-white rounded-2xl border border-paper-200 shadow-card-lg overflow-hidden"
+      className="bg-void-surface/70 backdrop-blur-md rounded-2xl border border-white/10 overflow-hidden"
       onPaste={handlePaste}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
@@ -199,7 +199,9 @@ export function ChatInput({ onSend, disabled, voice }: Props) {
               ? 'Talk mode on — speak, or type here to cancel'
               : disabled
                 ? 'Thinking…'
-                : 'Talk, type, or send a photo — Review before it files'
+                : isPlainMode()
+                  ? 'Message'
+                  : 'Say something into the dark…'
           }
           disabled={disabled || voice?.active}
           enterKeyHint="send"
@@ -232,24 +234,17 @@ export function ChatInput({ onSend, disabled, voice }: Props) {
           onClick={handleSubmit}
           disabled={!canSend}
           aria-label="Send message"
-          className={`touch-target shrink-0 rounded-xl flex items-center justify-center transition self-end active:scale-95 ${
-            canSend
-              ? 'bg-friends-sofa text-white shadow-card active:bg-friends-sofa-dark'
-              : 'bg-paper-100 text-paper-300 cursor-not-allowed'
+          className={`touch-target shrink-0 w-11 h-11 rounded-full flex items-center justify-center transition self-end active:scale-95 bg-void-red text-white ${
+            canSend ? '' : 'opacity-40 cursor-not-allowed'
           }`}
         >
           {uploading ? (
             <span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
           ) : (
-            <Send size={20} className={canSend ? 'text-white' : 'text-paper-300'} />
+            <Send size={18} className="text-white" />
           )}
         </button>
       </div>
-      {!voice?.active && !disabled && (
-        <p className="px-3 pb-2 text-[11px] text-paper-400">
-          Saved to Inbox. Approve in Review to file.
-        </p>
-      )}
     </div>
   )
 }

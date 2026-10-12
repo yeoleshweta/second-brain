@@ -16,11 +16,103 @@
     height: -webkit-fill-available;
   }
 
+  :root {
+    --bg: #0b0b10;
+    --surface: #16161d;
+    --text: #ece6d8;
+    --muted: #9c978b;
+    --void-red: #ff4545;
+    --upside: #5ba8e6;
+    --static: #f2b84b;
+    --tag: #ff6a3d;
+    --sky: #5a0f12;
+  }
+
   body {
-    @apply bg-friends-cream text-paper-800;
+    @apply text-paper-800;
+    background-color: var(--bg);
+    background-image: linear-gradient(180deg, var(--sky) 0%, var(--bg) 33%);
     overscroll-behavior: none;
     min-height: 100dvh;
     min-height: -webkit-fill-available;
+  }
+
+  html.lights-on body {
+    background-image: none;
+  }
+}
+
+@layer components {
+  .void-brand-svg {
+    color: var(--void-red);
+    filter: drop-shadow(0 0 8px var(--void-red));
+    overflow: visible;
+    animation: void-flicker 600ms ease 1;
+  }
+
+  html.lights-on .void-brand-svg {
+    color: var(--text);
+    filter: none;
+    animation: none;
+  }
+
+  html.lights-on .void-brand-svg text {
+    fill: currentColor;
+    stroke: none;
+  }
+
+  .void-wire {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 16px;
+    width: 74px;
+  }
+
+  .void-wire::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 1px;
+    background: rgba(236, 230, 216, 0.35);
+  }
+
+  .void-bulb {
+    position: relative;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    opacity: 0.28;
+    animation: void-bulb 1s ease-in-out infinite;
+  }
+
+  .void-bulb:nth-child(2) { animation-delay: 250ms; }
+  .void-bulb:nth-child(3) { animation-delay: 500ms; }
+  .void-bulb:nth-child(4) { animation-delay: 750ms; }
+}
+
+@keyframes void-flicker {
+  0%, 40%, 80%, 100% { opacity: 1; }
+  20%, 60% { opacity: 0.2; }
+}
+
+@keyframes void-bulb {
+  0%, 100% { opacity: 0.28; }
+  40% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .void-brand,
+  .void-brand-svg,
+  .void-bulb {
+    animation: none;
+  }
+
+  .void-bulb {
+    opacity: 0.85;
   }
 }
 
@@ -105,10 +197,10 @@
 
   /* code block */
   .prose-chat pre {
-    @apply bg-paper-900 text-paper-100 rounded-xl p-3.5 my-3 overflow-x-auto text-[11px] font-mono leading-relaxed;
+    @apply bg-black text-paper-700 rounded-xl p-3.5 my-3 overflow-x-auto text-[11px] font-mono leading-relaxed;
   }
   .prose-chat pre code {
-    @apply bg-transparent text-paper-100 p-0;
+    @apply bg-transparent text-paper-700 p-0;
   }
 
   /* links */
@@ -136,7 +228,8 @@
     @apply text-paper-800;
   }
   .prose-chat ol li::marker {
-    @apply text-accent-400 font-semibold;
+    color: var(--muted);
+    font-weight: 500;
   }
 
   /* headings */

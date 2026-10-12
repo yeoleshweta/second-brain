@@ -34,6 +34,15 @@ function resolveApiBase(): string {
 
 const API_BASE = resolveApiBase()
 
+/** Address the iPhone Shortcut should POST a shared link to. */
+export function shareApiUrl(): string {
+  const base = resolveApiBase()
+  if (base) return `${base}/api/share`
+  const host = window.location.hostname
+  if (host === 'localhost' || host === '127.0.0.1') return ''
+  return `${window.location.origin}/api/share`
+}
+
 function authHeaders(): HeadersInit {
   return {
     Authorization: `Bearer ${API_TOKEN}`,
@@ -99,6 +108,7 @@ export async function* streamChat(
       message,
       chat_history: chatHistory,
       session_id: sessionId,
+      plain_mode: localStorage.getItem('void_plain_mode') === '1',
       attachments: attachments.map((a) => ({
         type: 'file',
         file_id: a.fileId,

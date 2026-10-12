@@ -3,14 +3,18 @@
 v1 capture writes markdown under OBSIDIAN_VAULT_PATH. The Local REST API
 plugin is optional: if the vault folder exists, disk writes succeed even
 when nothing is listening on 127.0.0.1:27124.
+
+When GITHUB_VAULT_REPO and GITHUB_TOKEN are set, writes go through the
+GitHub Contents API so a phone/Mac-off capture can land in the git vault.
 """
 from __future__ import annotations
 
 import asyncio
+import base64
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from loguru import logger
 
@@ -116,6 +120,93 @@ class _FileBackend:
         return await asyncio.to_thread(_fs_list_dir, self._root, folder)
 
 
+class GitHubVaultBackend:
+    """Read/write vault markdown via the GitHub Contents API."""
+
+    def __init__(self, repo: str, token: str, branch: str) -> None:
+        import httpx
+
+        self._repo = repo.strip()
+        self._branch = branch.strip() or "main"
+        self._client = httpx.AsyncClient(
+            base_url="https://api.github.com",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "second-brain-vault",
+            },
+            timeout=30.0,
+        )
+
+    async def close(self) -> None:
+        await self._client.aclose()
+
+    def _contents_url(self, path: str) -> str:
+        rel = path.replace("\\", "/").lstrip("/")
+        return f"/repos/{self._repo}/contents/{rel}"
+
+    async def _get_meta(self, path: str) -> dict[str, Any] | None:
+        resp = await self._client.get(
+            self._contents_url(path),
+            params={"ref": self._branch},
+        )
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        data = resp.json()
+        return data if isinstance(data, dict) else None
+
+    async def get(self, path: str) -> str:
+        meta = await self._get_meta(path)
+        if not meta or meta.get("type") != "file":
+            raise FileNotFoundError(path)
+        encoded = str(meta.get("content") or "").replace("\n", "")
+        return base64.b64decode(encoded).decode("utf-8")
+
+    async def put(self, path: str, content: str) -> None:
+        meta = await self._get_meta(path)
+        payload: dict[str, Any] = {
+            "message": f"vault: update {path}",
+            "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
+            "branch": self._branch,
+        }
+        if meta and meta.get("sha"):
+            payload["sha"] = meta["sha"]
+        resp = await self._client.put(self._contents_url(path), json=payload)
+        if resp.status_code == 409:
+            raise VaultConflictError(path)
+        resp.raise_for_status()
+        logger.info("Vault write (github) → {} @ {}", path, self._repo)
+
+    async def append(self, path: str, content: str) -> None:
+        try:
+            existing = await self.get(path)
+        except FileNotFoundError:
+            existing = ""
+        await self.put(path, existing + content)
+
+    async def list_dir(self, folder: str) -> list[str]:
+        prefix = folder.strip("/")
+        url = self._contents_url(prefix) if prefix else f"/repos/{self._repo}/contents"
+        resp = await self._client.get(url, params={"ref": self._branch})
+        if resp.status_code == 404:
+            return []
+        resp.raise_for_status()
+        data = resp.json()
+        if not isinstance(data, list):
+            return []
+        names: list[str] = []
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "")
+            if not name:
+                continue
+            names.append(f"{name}/" if item.get("type") == "dir" else name)
+        return sorted(names)
+
+
 def _make_backend(_rest=None, _file=None):  # type: ignore[untyped-def]
     """Build the right backend from settings.
 
@@ -123,6 +214,11 @@ def _make_backend(_rest=None, _file=None):  # type: ignore[untyped-def]
     does not require the Local REST API plugin for basic capture.
     """
     settings = get_settings()
+    repo = (settings.github_vault_repo or "").strip()
+    token = (settings.github_token or "").strip()
+    if repo and token:
+        logger.info("ObsidianClient: using GitHub Contents API for {}", repo)
+        return GitHubVaultBackend(repo, token, settings.github_vault_branch)
     vault: Path | None = None
     if settings.obsidian_vault_path:
         vault = Path(settings.obsidian_vault_path)
@@ -147,11 +243,13 @@ _PROTECTED_WRITE_PREFIXES = (
     "03-Finance",
     "04-People",
     "05-Calendar",
+    "00-Inbox/Daily",
     "Career/Profile",
     "Context",
 )
 
 DAILY_NOTE_DIR = "00-Inbox/Daily"
+VOID_DIR = "00-Inbox/Void"
 UNSORTED_DIR = "00-Inbox/Unsorted"
 SYSTEM_LOG_DIR = "99-System/Logs"
 DAILY_TEMPLATE_PATH = "99-System/Templates/tpl-daily.md"
@@ -207,9 +305,9 @@ _TYPE_KEYWORDS: dict[LogType, tuple[str, ...]] = {
 
 _CAPTURE_PREFIX_RE = re.compile(
     r"^(?:\[(?P<agent>[^\]]+)\]\s*)?"
-    r"(?:remember this|capture this|note this|dump this|"
+    r"(?:remember (?:this|these|that|today)|capture this|note this|dump this|"
     r"write this down|put this in (?:my )?inbox|add to inbox|inbox this)"
-    r"\s*[:\—\–\-]\s*",
+    r"(?:\s*[:\—\–\-]\s*|\s+)",
     re.IGNORECASE,
 )
 
@@ -244,21 +342,49 @@ def _keyword_hit(text: str, keyword: str) -> bool:
     return bool(re.search(rf"(?<!\w){re.escape(keyword)}(?!\w)", text))
 
 
-def classify_log_type(text: str) -> LogType | None:
-    """Return a single log type when keywords are unambiguous; else None."""
+def log_type_hits(text: str) -> list[LogType]:
     lowered = (text or "").lower()
     hits: list[LogType] = []
     for typ, keywords in _TYPE_KEYWORDS.items():
         if any(_keyword_hit(lowered, kw) for kw in keywords):
             hits.append(typ)
+    return hits
+
+
+def classify_log_type(text: str) -> LogType | None:
+    """Return a single log type when keywords are unambiguous; else None."""
+    hits = log_type_hits(text)
     if len(hits) == 1:
         return hits[0]
     return None
 
 
+def unsorted_reason(text: str) -> str:
+    hits = log_type_hits(text)
+    if not hits:
+        return "no type matched"
+    return "more than one type matched: " + ", ".join(hits)
+
+
+class VaultConflictError(RuntimeError):
+    """GitHub Contents API sha mismatch — re-read and retry the append."""
+
+
 def _format_log_entry(text: str, typ: LogType, src: str) -> str:
     ts = datetime.now().strftime("%H:%M")
     return f"- {ts} {_TYPE_EMOJI[typ]} **{typ}** :: {text} [src:: {src}]"
+
+
+def _builtin_void_note(today: str) -> str:
+    return (
+        f"---\n"
+        f"type: void\n"
+        f"date: {today}\n"
+        f"---\n\n"
+        f"# {today}\n\n"
+        f"## Log\n\n"
+        f"## Unsorted\n"
+    )
 
 
 def _builtin_daily_note(today: str, created: str) -> str:
@@ -442,46 +568,47 @@ class ObsidianClient:
         source: str = "user",
         tag: str = "inbox",
     ) -> str:
-        """Append one capture under ## Log in 00-Inbox/Daily/YYYY-MM-DD.md.
+        """Append one line to 00-Inbox/Void/YYYY-MM-DD.md.
 
-        Five types only (food, finance, idea, task, exercise). Unparseable
-        input is written verbatim to 00-Inbox/Unsorted/. Failures log to
-        99-System/Logs/. Never writes 01–05, Career/Profile, or Context.
-        Existing daily-note lines are never edited or deleted.
+        Exactly one keyword type → ## Log. Zero or many types → ## Unsorted
+        with the reason. Never writes the human daily note or 01–05.
+        On a GitHub sha conflict, re-read and retry so both lines survive.
         """
-        del tag  # v1 uses [src::], not #inbox
+        del tag
         now = datetime.now()
         today = now.strftime("%Y-%m-%d")
-        created = now.strftime("%Y-%m-%dT%H:%M")
-        stamp = now.strftime("%Y-%m-%d-%H%M%S")
         raw = (message or "").strip() or "(empty capture)"
         src = _src_value(source)
-        try:
-            cleaned = _strip_capture_prefix(raw)
-            typ = classify_log_type(cleaned)
-            if typ is None:
-                path = f"{UNSORTED_DIR}/{stamp}.md"
-                body = (
-                    f"---\n"
-                    f"type: unsorted\n"
-                    f"created: {created}\n"
-                    f"src: {src}\n"
-                    f"---\n\n"
-                    f"{raw}\n"
-                )
-                await self.create_note(path, body)
-                return path
-
-            daily_path = f"{DAILY_NOTE_DIR}/{today}.md"
+        cleaned = _strip_capture_prefix(raw)
+        typ = classify_log_type(cleaned)
+        if typ is None:
+            heading = "## Unsorted"
+            entry = (
+                f"- {now.strftime('%H:%M')} unsorted ({unsorted_reason(cleaned)}) "
+                f":: {cleaned} [src:: {src}]"
+            )
+        else:
+            heading = "## Log"
             entry = _format_log_entry(cleaned, typ, src)
-            existing = await self._read_or_create_daily(daily_path, today, created)
-            updated = _insert_under_heading(existing, "## Log", entry)
-            if not _lines_preserved(existing, updated):
-                raise RuntimeError("refusing daily write: existing lines would change")
-            _assert_writable(daily_path)
-            await self._backend.put(daily_path, updated)
-            logger.info("Obsidian capture → {}", daily_path)
-            return daily_path
+        path = f"{VOID_DIR}/{today}.md"
+        try:
+            for _attempt in range(3):
+                try:
+                    existing = await self._backend.get(path)
+                except Exception:
+                    existing = _builtin_void_note(today)
+                updated = _insert_under_heading(existing, heading, entry)
+                if existing.strip() and not _lines_preserved(existing, updated):
+                    raise RuntimeError("refusing void write: existing lines would change")
+                _assert_writable(path)
+                try:
+                    await self._backend.put(path, updated)
+                    logger.info("Void capture → {} {}", path, heading)
+                    return path
+                except VaultConflictError:
+                    logger.info("Void write conflict; re-reading {}", path)
+                    continue
+            raise VaultConflictError(path)
         except PermissionError:
             raise
         except Exception as exc:

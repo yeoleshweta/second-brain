@@ -100,7 +100,7 @@ export function ReviewInbox() {
 
   return (
     <div className="h-full min-h-0 flex flex-col md:flex-row overflow-hidden">
-      <aside className="md:w-80 shrink-0 border-b md:border-b-0 md:border-r border-paper-200 bg-white/80 overflow-y-auto">
+      <aside className="md:w-80 shrink-0 border-b md:border-b-0 md:border-r border-paper-200 bg-paper-50/80 overflow-y-auto">
         <div className="px-4 py-4 flex items-start justify-between gap-2">
           <div>
             <h1 className="text-base font-semibold text-paper-800">Review</h1>
@@ -111,7 +111,7 @@ export function ReviewInbox() {
           <button
             type="button"
             onClick={() => void refresh()}
-            className="p-2 rounded-xl border border-paper-200 bg-white text-paper-600"
+            className="p-2 rounded-xl border border-paper-200 bg-paper-50 text-paper-600"
             aria-label="Refresh"
           >
             <RefreshCw size={15} />
@@ -121,7 +121,7 @@ export function ReviewInbox() {
           <button
             type="button"
             onClick={() => setShowPaste((v) => !v)}
-            className="w-full text-sm font-medium py-2 rounded-xl bg-paper-800 text-white"
+            className="w-full text-sm font-medium py-2 rounded-xl bg-accent-500 text-white"
           >
             {showPaste ? 'Close paste' : 'Paste meeting or clip'}
           </button>
@@ -137,7 +137,7 @@ export function ReviewInbox() {
             <select
               value={source}
               onChange={(e) => setSource(e.target.value)}
-              className="w-full text-sm border border-paper-200 rounded-xl px-3 py-2 bg-white"
+              className="w-full text-sm border border-paper-200 rounded-xl px-3 py-2 bg-paper-50"
             >
               <option value="meeting">Meeting transcript</option>
               <option value="email">Email</option>
@@ -183,7 +183,7 @@ export function ReviewInbox() {
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-medium text-paper-800 truncate">{item.title}</span>
                       <span className={`text-[10px] uppercase tracking-wide shrink-0 ${
-                        item.status === 'proposed' ? 'text-emerald-700' : 'text-amber-700'
+                        item.status === 'proposed' ? 'text-paper-600' : 'text-amber-700'
                       }`}>
                         {item.status}
                       </span>
@@ -201,7 +201,7 @@ export function ReviewInbox() {
 
       <section className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
         {error && (
-          <p className="shrink-0 text-sm text-red-700 bg-red-50 border-b border-red-100 px-4 py-2">{error}</p>
+          <p className="shrink-0 text-sm text-rust-400 bg-rust-100 border-b border-rust-200 px-4 py-2">{error}</p>
         )}
         {!selected ? (
           <div className="flex-1 flex items-center justify-center text-paper-400 text-sm px-6 text-center">
@@ -209,7 +209,7 @@ export function ReviewInbox() {
           </div>
         ) : (
           <>
-            <header className="shrink-0 px-4 md:px-6 py-4 border-b border-paper-200 bg-white/90">
+            <header className="shrink-0 px-4 md:px-6 py-4 border-b border-paper-200 bg-paper-50/90">
               <h2 className="text-lg font-semibold text-paper-800">{selected.title}</h2>
               <p className="text-[11px] font-mono text-paper-400 mt-1 break-all">{selected.path}</p>
               {selected.summary && (
@@ -232,7 +232,7 @@ export function ReviewInbox() {
                     type="button"
                     disabled={busy === selected.path}
                     onClick={() => void run(selected.path, () => proposeWikiItem(selected.path))}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-xl bg-paper-800 text-white disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-xl bg-accent-500 text-white disabled:opacity-50"
                   >
                     {busy === selected.path ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                     Draft filing
@@ -263,7 +263,7 @@ export function ReviewInbox() {
                 type="button"
                 onClick={() => setPane('raw')}
                 className={`px-3 py-1.5 text-xs font-medium rounded-lg ${
-                  pane === 'raw' ? 'bg-paper-800 text-white' : 'text-paper-500 bg-paper-100'
+                  pane === 'raw' ? 'bg-accent-500 text-white' : 'text-paper-500 bg-paper-100'
                 }`}
               >
                 Raw
@@ -272,7 +272,7 @@ export function ReviewInbox() {
                 type="button"
                 onClick={() => setPane('proposed')}
                 className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg ${
-                  pane === 'proposed' ? 'bg-paper-800 text-white' : 'text-paper-500 bg-paper-100'
+                  pane === 'proposed' ? 'bg-accent-500 text-white' : 'text-paper-500 bg-paper-100'
                 }`}
               >
                 <FileText size={12} /> Proposed

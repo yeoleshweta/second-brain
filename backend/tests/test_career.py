@@ -34,6 +34,8 @@ def career_vault(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     )
     monkeypatch.setenv("OBSIDIAN_API_KEY", "")
     monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(vault))
+    monkeypatch.setenv("GITHUB_VAULT_REPO", "")
+    monkeypatch.setenv("GITHUB_TOKEN", "")
     get_settings.cache_clear()
     yield vault
     get_settings.cache_clear()

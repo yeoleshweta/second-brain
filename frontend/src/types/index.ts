@@ -36,17 +36,26 @@ export interface BookItem {
   is_search?: boolean
 }
 
+export interface PendingCalendar {
+  summary: string
+  when: string
+  duration_minutes: number
+  kind?: 'reminder'
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
   intent?: Intent
   obsidianPath?: string
+  pendingCalendar?: PendingCalendar
   attachments?: Attachment[]
   status?: 'thinking' | 'complete' | 'error'
   digestItems?: DigestItem[]
   suggestItems?: SuggestItem[]
   bookItems?: BookItem[]
+  createdAt?: string
 }
 
 export interface Attachment {
@@ -69,6 +78,7 @@ export interface ChatStreamEvent {
     | 'book_items'
     | 'session_id'
     | 'user_message'
+    | 'pending_calendar'
   data: string
 }
 

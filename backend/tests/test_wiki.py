@@ -15,6 +15,8 @@ def vault(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "vault"
     (root / "Inbox").mkdir(parents=True)
     monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(root))
+    monkeypatch.setenv("GITHUB_VAULT_REPO", "")
+    monkeypatch.setenv("GITHUB_TOKEN", "")
     get_settings.cache_clear()
     yield root
     get_settings.cache_clear()

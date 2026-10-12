@@ -81,7 +81,7 @@ function ItemCard({
   const appleBook = isAppleBook(item)
 
   return (
-    <div className="bg-white rounded-2xl border border-paper-100 shadow-card hover:shadow-card-lg transition p-4 flex gap-3">
+    <div className="bg-paper-50 rounded-2xl border border-paper-100 shadow-card hover:shadow-card-lg transition p-4 flex gap-3">
       <KindIcon kind={item.kind} />
 
       <div className="flex-1 min-w-0 space-y-1.5">
@@ -117,7 +117,7 @@ function ItemCard({
               href={appleBooksOpenUrl(item)}
               target="_blank"
               rel="noopener noreferrer"
-              className="shrink-0 touch-target flex items-center justify-center rounded-lg bg-amber-50 active:bg-amber-100 text-amber-500 active:text-amber-600 transition mt-0.5"
+              className="shrink-0 touch-target flex items-center justify-center rounded-lg bg-paper-100 active:bg-paper-200 text-amber-500 active:text-amber-600 transition mt-0.5"
               aria-label="Open in Apple Books"
               title="Open in Apple Books"
             >
@@ -162,7 +162,7 @@ function ItemCard({
               href={appleBooksOpenUrl(item)}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-xs font-medium text-amber-600 active:text-amber-700 bg-amber-50 active:bg-amber-100 px-3 py-2 rounded-lg transition min-h-[44px] touch-manipulation"
+              className="flex items-center gap-1.5 text-xs font-medium text-amber-600 active:text-amber-700 bg-paper-100 active:bg-paper-200 px-3 py-2 rounded-lg transition min-h-[44px] touch-manipulation"
             >
               <BookOpen size={14} />
               Open in Books
@@ -338,7 +338,7 @@ export function ReadingList() {
             <button
               onClick={load}
               disabled={loading}
-              className="touch-target flex items-center justify-center rounded-xl bg-white border border-paper-200 text-paper-400 active:text-accent-400 active:border-accent-200 transition shadow-card"
+              className="touch-target flex items-center justify-center rounded-xl bg-paper-50 border border-paper-200 text-paper-400 active:text-accent-400 active:border-accent-200 transition shadow-card"
               aria-label="Refresh reading list"
             >
               <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
@@ -347,7 +347,7 @@ export function ReadingList() {
 
           {/* Search + refresh row */}
           <div className="flex items-center gap-2 mb-3">
-            <div className="flex-1 flex items-center gap-2 bg-white border border-paper-200 rounded-xl px-3 py-2.5 shadow-card min-h-[44px]">
+            <div className="flex-1 flex items-center gap-2 bg-paper-50 border border-paper-200 rounded-xl px-3 py-2.5 shadow-card min-h-[44px]">
               <Search size={16} className="text-paper-400 shrink-0" />
               <input
                 type="search"
@@ -372,7 +372,7 @@ export function ReadingList() {
             <button
               onClick={load}
               disabled={loading}
-              className="md:hidden touch-target shrink-0 flex items-center justify-center rounded-xl bg-white border border-paper-200 text-paper-400 active:text-accent-400 transition shadow-card"
+              className="md:hidden touch-target shrink-0 flex items-center justify-center rounded-xl bg-paper-50 border border-paper-200 text-paper-400 active:text-accent-400 transition shadow-card"
               aria-label="Refresh reading list"
             >
               <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
@@ -391,7 +391,7 @@ export function ReadingList() {
                   className={`shrink-0 text-xs font-semibold px-4 py-2.5 rounded-full transition min-h-[44px] touch-manipulation active:scale-95 ${
                     filter === id
                       ? 'bg-accent-400 text-white shadow-card'
-                      : 'bg-white border border-paper-200 text-paper-500 active:border-accent-200'
+                      : 'bg-paper-50 border border-paper-200 text-paper-500 active:border-accent-200'
                   }`}
                 >
                   {label}
@@ -416,7 +416,7 @@ export function ReadingList() {
         <div className="max-w-2xl mx-auto space-y-3">
           {loading ? (
             Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="bg-white rounded-2xl border border-paper-100 p-4 animate-pulse">
+              <div key={i} className="bg-paper-50 rounded-2xl border border-paper-100 p-4 animate-pulse">
                 <div className="flex gap-3">
                   <div className="w-10 h-10 rounded-xl bg-paper-200" />
                   <div className="flex-1 space-y-2">

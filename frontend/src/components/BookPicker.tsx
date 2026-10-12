@@ -49,7 +49,7 @@ export function BookPicker({ items }: Props) {
         return (
           <div
             key={item.id}
-            className="bg-white border border-paper-100 rounded-xl shadow-card overflow-hidden"
+            className="bg-paper-50 border border-paper-100 rounded-xl shadow-card overflow-hidden"
           >
             <div className="px-3 py-2.5">
               <button

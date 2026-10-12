@@ -25,7 +25,7 @@ export function Sidebar({
   reviewCount = 0,
 }: Props) {
   return (
-    <aside className="hidden md:flex flex-col w-72 shrink-0 bg-white/95 border-r border-paper-200 h-full overflow-y-auto backdrop-blur-sm">
+    <aside className="hidden md:flex flex-col w-72 shrink-0 bg-paper-50/95 border-r border-paper-200 h-full overflow-y-auto backdrop-blur-sm">
 
       <div className="px-4 pt-5 pb-4 border-b border-paper-200 shrink-0">
         <BrandHeader onLogoClick={onNewChat} />
@@ -44,19 +44,19 @@ export function Sidebar({
             onClick={() => onViewChange(id)}
             className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl transition text-left ${
               activeView === id
-                ? 'bg-paper-100 text-paper-800'
-                : 'text-paper-500 hover:bg-paper-50 hover:text-paper-700'
+                ? 'bg-paper-100 text-accent-400'
+                : 'text-paper-500 hover:bg-paper-100 hover:text-paper-700'
             }`}
           >
-            <span className={activeView === id ? 'text-paper-800' : 'text-paper-400'}>{icon}</span>
+            <span className={activeView === id ? 'text-accent-400' : 'text-paper-400'}>{icon}</span>
             <span className="text-sm font-medium">{label}</span>
             {id === 'review' && reviewCount > 0 && (
-              <span className="ml-auto text-[10px] font-semibold bg-amber-100 text-amber-800 rounded-full px-1.5 py-0.5">
+              <span className="ml-auto text-[10px] font-semibold bg-paper-200 text-paper-700 rounded-full px-1.5 py-0.5">
                 {reviewCount}
               </span>
             )}
             {id !== 'review' && activeView === id && (
-              <div className="ml-auto w-1.5 h-1.5 rounded-full bg-paper-800" />
+              <div className="ml-auto w-1.5 h-1.5 rounded-full bg-accent-400" />
             )}
           </button>
         ))}

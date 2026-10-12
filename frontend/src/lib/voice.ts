@@ -4,6 +4,7 @@ import { fetchSpeechAudio, transcribeUpload, uploadFile } from '@/lib/api'
 export { transcribeUpload }
 
 const VOICE_KEY = 'centralperk_voice_replies'
+const PLAIN_KEY = 'void_plain_mode'
 let currentAudio: HTMLAudioElement | null = null
 let currentUrl: string | null = null
 let speakWaiters: Array<() => void> = []
@@ -28,6 +29,23 @@ export function isVoiceRepliesEnabled(): boolean {
 export function setVoiceRepliesEnabled(on: boolean): void {
   localStorage.setItem(VOICE_KEY, on ? '1' : '0')
   if (!on) stopSpeaking()
+}
+
+export function isPlainMode(): boolean {
+  try {
+    return localStorage.getItem(PLAIN_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function applyPlainMode(): void {
+  document.documentElement.classList.toggle('lights-on', isPlainMode())
+}
+
+export function setPlainMode(on: boolean): void {
+  localStorage.setItem(PLAIN_KEY, on ? '1' : '0')
+  applyPlainMode()
 }
 
 function finishSpeakWaiters(): void {

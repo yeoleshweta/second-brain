@@ -11,7 +11,7 @@ const SCOPES: { id: Scope; label: string }[] = [
 
 function EventCard({ event }: { event: AgendaEvent }) {
   return (
-    <div className="bg-white rounded-2xl border border-paper-100 shadow-card p-4 flex gap-3">
+    <div className="bg-paper-50 rounded-2xl border border-paper-100 shadow-card p-4 flex gap-3">
       <div className="w-14 shrink-0 flex flex-col items-center justify-center rounded-xl bg-perk-50 border border-perk-100 py-2">
         <span className="text-xs font-bold text-perk-600 uppercase tracking-wide">
           {event.time_label.replace(/[0-9:]/g, '').trim() || '—'}
@@ -69,10 +69,10 @@ export function Agenda() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      <div className="shrink-0 px-4 md:px-6 pt-4 pb-3 border-b border-paper-200 bg-white/80 backdrop-blur-sm">
+      <div className="shrink-0 px-4 md:px-6 pt-4 pb-3 border-b border-paper-200 bg-paper-50/80 backdrop-blur-sm">
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-paper-800 text-paper-50 flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-accent-500 text-white flex items-center justify-center shrink-0">
               <Calendar size={18} />
             </div>
             <div className="min-w-0">
@@ -130,7 +130,7 @@ export function Agenda() {
           )}
 
           {!loading && !error && connected && events.length === 0 && (
-            <div className="rounded-2xl border border-paper-100 bg-white p-6 text-center shadow-card">
+            <div className="rounded-2xl border border-paper-100 bg-paper-50 p-6 text-center shadow-card">
               <p className="text-sm text-paper-600 leading-relaxed">
                 {reply || 'Nothing scheduled.'}
               </p>

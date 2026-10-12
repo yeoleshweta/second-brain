@@ -1,0 +1,16 @@
+.env
+.env.*
+.venv
+venv
+data
+logs
+tests
+__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.db
+.git
+*.pem
+credentials.json
+token.json

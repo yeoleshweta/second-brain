@@ -173,7 +173,7 @@ export default function FinanceDashboard() {
     <div className="flex flex-col h-full overflow-hidden bg-friends-cream/30">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 pt-4 pb-2 shrink-0">
-        <div className="w-8 h-8 rounded-xl bg-paper-800 text-paper-50 flex items-center justify-center shrink-0">
+        <div className="w-8 h-8 rounded-xl bg-accent-500 text-white flex items-center justify-center shrink-0">
           <DollarSign size={16} />
         </div>
         <div className="flex-1 min-w-0">
@@ -193,7 +193,7 @@ export default function FinanceDashboard() {
 
       {/* Sync message */}
       {syncMsg && (
-        <div className="mx-4 mb-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">
+        <div className="mx-4 mb-2 px-3 py-2 rounded-xl bg-paper-100 border border-paper-300 text-xs text-paper-600">
           {syncMsg}
         </div>
       )}
@@ -207,7 +207,7 @@ export default function FinanceDashboard() {
             className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
               period === p.id
                 ? 'bg-perk-500 text-white shadow-sm'
-                : 'bg-white border border-paper-200 text-paper-600 active:border-perk-300'
+                : 'bg-paper-50 border border-paper-200 text-paper-600 active:border-perk-300'
             }`}
           >
             {p.label}
@@ -235,7 +235,7 @@ export default function FinanceDashboard() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 pb-6">
         {error && (
-          <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 border border-red-100 text-sm text-red-600 mb-4">
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-rust-100 border border-rust-200 text-sm text-rust-400 mb-4">
             <AlertCircle size={14} className="shrink-0" />
             {error}
           </div>
@@ -253,7 +253,7 @@ export default function FinanceDashboard() {
             {activeTab === 'overview' && summary && (
               <div className="space-y-4">
                 {/* Total spend card */}
-                <div className="bg-white rounded-2xl border border-paper-100 shadow-card p-4 flex items-center gap-4">
+                <div className="bg-paper-50 rounded-2xl border border-paper-100 shadow-card p-4 flex items-center gap-4">
                   <div className="w-12 h-12 rounded-xl bg-perk-50 border border-perk-100 flex items-center justify-center shrink-0">
                     <TrendingDown size={20} className="text-perk-500" />
                   </div>
@@ -269,7 +269,7 @@ export default function FinanceDashboard() {
 
                 {/* Category breakdown */}
                 {summary.categories.length > 0 && (
-                  <div className="bg-white rounded-2xl border border-paper-100 shadow-card p-4">
+                  <div className="bg-paper-50 rounded-2xl border border-paper-100 shadow-card p-4">
                     <p className="text-xs font-semibold text-paper-500 uppercase tracking-wide mb-3">
                       Spending by category
                     </p>
@@ -279,7 +279,7 @@ export default function FinanceDashboard() {
 
                 {/* Subscriptions preview */}
                 {summary.subscriptions.length > 0 && (
-                  <div className="bg-white rounded-2xl border border-paper-100 shadow-card p-4">
+                  <div className="bg-paper-50 rounded-2xl border border-paper-100 shadow-card p-4">
                     <div className="flex items-center gap-2 mb-3">
                       <Repeat2 size={14} className="text-friends-purple" />
                       <p className="text-xs font-semibold text-paper-500 uppercase tracking-wide">
@@ -309,7 +309,7 @@ export default function FinanceDashboard() {
 
             {/* Transactions tab */}
             {activeTab === 'transactions' && (
-              <div className="bg-white rounded-2xl border border-paper-100 shadow-card p-4">
+              <div className="bg-paper-50 rounded-2xl border border-paper-100 shadow-card p-4">
                 {transactions.length === 0 ? (
                   <p className="text-sm text-paper-400 text-center py-6">No transactions for this period.</p>
                 ) : (
@@ -334,7 +334,7 @@ export default function FinanceDashboard() {
                   summary.subscriptions.map((sub) => (
                     <div
                       key={sub.merchant}
-                      className="bg-white rounded-2xl border border-paper-100 shadow-card p-4 flex items-center gap-3"
+                      className="bg-paper-50 rounded-2xl border border-paper-100 shadow-card p-4 flex items-center gap-3"
                     >
                       <div className="w-10 h-10 rounded-xl bg-friends-purple/10 border border-friends-purple/20 flex items-center justify-center shrink-0">
                         <Repeat2 size={16} className="text-friends-purple" />

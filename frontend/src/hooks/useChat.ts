@@ -14,6 +14,7 @@ import type {
   DigestItem,
   Intent,
   Message,
+  PendingCalendar,
   SuggestItem,
 } from '@/types'
 
@@ -35,6 +36,8 @@ function apiMessageToUi(row: Record<string, unknown>): Message {
     suggestItems: row.suggestItems as SuggestItem[] | undefined,
     bookItems: row.bookItems as BookItem[] | undefined,
     obsidianPath: row.obsidianPath as string | undefined,
+    createdAt: typeof row.created_at === 'string' ? row.created_at : undefined,
+    pendingCalendar: row.pendingCalendar as PendingCalendar | undefined,
   }
 }
 
@@ -127,6 +130,7 @@ export function useChat() {
       content: text,
       attachments,
       status: 'complete',
+      createdAt: new Date().toISOString(),
     }
     const assistantMsg: Message = {
       id: createMessageId(),
@@ -202,6 +206,13 @@ export function useChat() {
                 }
               case 'obsidian':
                 return { ...m, obsidianPath: evt.data }
+              case 'pending_calendar':
+                try {
+                  const card = JSON.parse(evt.data) as PendingCalendar
+                  return { ...m, pendingCalendar: card }
+                } catch {
+                  return m
+                }
               case 'done':
                 return { ...m, status: 'complete' }
               case 'error':
