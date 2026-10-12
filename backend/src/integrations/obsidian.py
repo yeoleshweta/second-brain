@@ -254,18 +254,38 @@ UNSORTED_DIR = "00-Inbox/Unsorted"
 SYSTEM_LOG_DIR = "99-System/Logs"
 DAILY_TEMPLATE_PATH = "99-System/Templates/tpl-daily.md"
 
-LogType = Literal["food", "finance", "idea", "task", "exercise"]
+LogType = Literal[
+    "food",
+    "finance",
+    "idea",
+    "task",
+    "exercise",
+    "recipe",
+    "reading",
+    "people",
+    "health",
+    "work",
+    "travel",
+    "link",
+]
 
-_TYPE_EMOJI: dict[LogType, str] = {
+_TYPE_EMOJI: dict[str, str] = {
     "food": "🍽",
     "finance": "💸",
     "idea": "💡",
     "task": "✅",
     "exercise": "🏃",
+    "recipe": "🥘",
+    "reading": "📖",
+    "people": "👤",
+    "health": "🩺",
+    "work": "💼",
+    "travel": "✈️",
+    "link": "🔗",
 }
 
-# Cheap keyword heuristic — exactly one hit files to Daily; else Unsorted.
-_TYPE_KEYWORDS: dict[LogType, tuple[str, ...]] = {
+# More keyword hits win. A tie goes to the word that appears first.
+_TYPE_KEYWORDS: dict[str, tuple[str, ...]] = {
     "food": (
         "ate",
         "eaten",
@@ -291,17 +311,42 @@ _TYPE_KEYWORDS: dict[LogType, tuple[str, ...]] = {
     ),
     "idea": ("idea", "insight", "realized"),
     "task": ("todo", "to-do", "task", "remind me", "need to", "follow up", "meeting"),
-        "exercise": (
-            "workout",
-            "gym",
-            "exercise",
-            "yoga",
-            "walked",
-            "walk",
-            "jog",
-            "run ",
-        ),
+    "exercise": (
+        "workout",
+        "gym",
+        "exercise",
+        "yoga",
+        "walked",
+        "walk",
+        "jog",
+        "run ",
+    ),
+    "recipe": (
+        "recipe",
+        "recipes",
+        "ingredient",
+        "ingredients",
+        "youtube",
+        "youtu.be",
+    ),
+    "reading": ("book", "books", "read", "article", "podcast", "audiobook"),
+    "people": ("called", "texted", "mom", "dad", "friend"),
+    "health": ("sleep", "doctor", "medicine", "headache", "sick"),
+    "work": ("deadline", "client", "interview", "job"),
+    "travel": ("flight", "hotel", "airport", "trip", "travel"),
 }
+
+_CATEGORY_STOP = frozenset(
+    {
+        "this", "that", "these", "those", "with", "from", "have", "been", "want",
+        "need", "some", "very", "really", "also", "into", "about", "your", "they",
+        "them", "were", "will", "would", "could", "should", "please", "thanks",
+        "hello", "like", "just", "today", "remember", "write", "down", "capture",
+        "note", "inbox", "what", "when", "where", "which", "there", "here",
+        "something", "anything", "everything", "because", "while", "after",
+        "before", "again", "still", "only", "then", "than", "their",
+    }
+)
 
 _CAPTURE_PREFIX_RE = re.compile(
     r"^(?:\[(?P<agent>[^\]]+)\]\s*)?"
@@ -342,21 +387,52 @@ def _keyword_hit(text: str, keyword: str) -> bool:
     return bool(re.search(rf"(?<!\w){re.escape(keyword)}(?!\w)", text))
 
 
-def log_type_hits(text: str) -> list[LogType]:
+def log_type_hits(text: str) -> list[str]:
     lowered = (text or "").lower()
-    hits: list[LogType] = []
+    hits: list[str] = []
     for typ, keywords in _TYPE_KEYWORDS.items():
         if any(_keyword_hit(lowered, kw) for kw in keywords):
             hits.append(typ)
     return hits
 
 
-def classify_log_type(text: str) -> LogType | None:
-    """Return a single log type when keywords are unambiguous; else None."""
-    hits = log_type_hits(text)
-    if len(hits) == 1:
-        return hits[0]
+def _new_category(text: str) -> str | None:
+    """Name a category from the note when none of the known ones fit."""
+    words = re.findall(r"[a-z][a-z'-]{3,}", (text or "").lower())
+    for word in words:
+        slug = re.sub(r"[^a-z]", "", word)
+        if len(slug) < 4 or slug in _CATEGORY_STOP or slug in _TYPE_KEYWORDS:
+            continue
+        return slug
     return None
+
+
+def classify_log_type(text: str) -> str | None:
+    """Pick one category. Known types win; otherwise a word from the note.
+
+    Several matches no longer fall through to Unsorted. The strongest match
+    wins, and a tie goes to whichever word shows up first.
+    """
+    lowered = (text or "").lower()
+    best_typ: str | None = None
+    best_score = 0
+    best_pos = 10**9
+    for typ, keywords in _TYPE_KEYWORDS.items():
+        positions = [lowered.find(kw) for kw in keywords if _keyword_hit(lowered, kw)]
+        positions = [pos for pos in positions if pos >= 0]
+        if not positions:
+            continue
+        score = len(positions)
+        pos = min(positions)
+        if score > best_score or (score == best_score and pos < best_pos):
+            best_score = score
+            best_pos = pos
+            best_typ = typ
+    if best_typ:
+        return best_typ
+    if re.search(r"https?://", lowered):
+        return "link"
+    return _new_category(lowered)
 
 
 def unsorted_reason(text: str) -> str:
@@ -366,13 +442,50 @@ def unsorted_reason(text: str) -> str:
     return "more than one type matched: " + ", ".join(hits)
 
 
+_UNSORTED_LINE_RE = re.compile(
+    r"^- (?P<time>\d{2}:\d{2}) unsorted \([^)]*\) :: (?P<body>.+) \[src:: (?P<src>[^\]]+)\]\s*$"
+)
+_REFILE_RE = re.compile(
+    r"^(?:file|save|put) (?:the )?(?:last|that) (?:note |capture )?as ([a-z][a-z -]{1,24})\s*$",
+    re.IGNORECASE,
+)
+
+
+def refile_request(message: str) -> str | None:
+    match = _REFILE_RE.match((message or "").strip())
+    if not match:
+        return None
+    slug = re.sub(r"[^a-z]+", "", match.group(1).lower())
+    return slug or None
+
+
+def refile_last_unsorted(text: str, category: str) -> str | None:
+    """Turn the newest unsorted line into a named category. None if there is none."""
+    lines = text.splitlines()
+    for index in range(len(lines) - 1, -1, -1):
+        match = _UNSORTED_LINE_RE.match(lines[index].strip())
+        if not match:
+            continue
+        emoji = _TYPE_EMOJI.get(category, "•")
+        lines[index] = (
+            f"- {match.group('time')} {emoji} **{category}** :: "
+            f"{match.group('body')} [src:: {match.group('src')}]"
+        )
+        updated = "\n".join(lines)
+        if text.endswith("\n"):
+            updated += "\n"
+        return updated
+    return None
+
+
 class VaultConflictError(RuntimeError):
     """GitHub Contents API sha mismatch — re-read and retry the append."""
 
 
-def _format_log_entry(text: str, typ: LogType, src: str) -> str:
+def _format_log_entry(text: str, typ: str, src: str) -> str:
     ts = datetime.now().strftime("%H:%M")
-    return f"- {ts} {_TYPE_EMOJI[typ]} **{typ}** :: {text} [src:: {src}]"
+    emoji = _TYPE_EMOJI.get(typ, "•")
+    return f"- {ts} {emoji} **{typ}** :: {text} [src:: {src}]"
 
 
 def _builtin_void_note(today: str) -> str:
@@ -525,6 +638,20 @@ class ObsidianClient:
                         out[name] = await asyncio.to_thread(_fs_read, root, rel)
         return out
 
+    async def refile_last_unsorted(self, category: str) -> str | None:
+        """Relabel the newest unsorted line in today's void file."""
+        path = f"{VOID_DIR}/{datetime.now().strftime('%Y-%m-%d')}.md"
+        try:
+            existing = await self._backend.get(path)
+        except Exception:
+            return None
+        updated = refile_last_unsorted(existing, category)
+        if updated is None:
+            return None
+        _assert_writable(path)
+        await self._backend.put(path, updated)
+        return path
+
     async def _log_system_failure(self, detail: str) -> str | None:
         """Append a failure line to 99-System/Logs/YYYY-MM-DD.md. Never silent."""
         now = datetime.now()
@@ -570,8 +697,9 @@ class ObsidianClient:
     ) -> str:
         """Append one line to 00-Inbox/Void/YYYY-MM-DD.md.
 
-        Exactly one keyword type → ## Log. Zero or many types → ## Unsorted
-        with the reason. Never writes the human daily note or 01–05.
+        Exactly one best category → ## Log, including a new category named
+        from the note when nothing known fits. Only empty notes stay Unsorted.
+        Never writes the human daily note or 01–05.
         On a GitHub sha conflict, re-read and retry so both lines survive.
         """
         del tag

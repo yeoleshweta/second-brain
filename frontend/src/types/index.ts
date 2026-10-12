@@ -1,6 +1,16 @@
 export type Intent = 'knowledge' | 'health' | 'finance' | 'calendar' | 'career' | 'general'
 
-export type AppView = 'chat' | 'review' | 'reading' | 'agenda' | 'finance' | 'settings'
+export type AppView = 'chat' | 'review' | 'reading' | 'agenda' | 'finance' | 'settings' | 'nutrition'
+
+export interface SavedRecipe {
+  date: string
+  time: string
+  body: string
+  path: string
+  url: string
+  title: string
+  kind: 'youtube' | 'personal'
+}
 
 export interface DigestItem {
   title: string

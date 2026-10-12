@@ -1,7 +1,7 @@
 """Save one Instagram or LinkedIn link the user shared from their phone.
 
 Does not log into those apps or fetch the page. The Shortcuts share sheet
-sends the link, and this stores that link.
+sends the link, and this stores that link. YouTube links are recipes.
 """
 from __future__ import annotations
 
@@ -10,12 +10,19 @@ from urllib.parse import urlparse
 
 _URL_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 _TRAIL = ".,);]>"
-_HOSTS = ("instagram.com", "instagr.am", "linkedin.com", "lnkd.in")
+_HOSTS = (
+    "instagram.com",
+    "instagr.am",
+    "linkedin.com",
+    "lnkd.in",
+    "youtube.com",
+    "youtu.be",
+)
 _MAX_NOTE = 280
 
 
 class ShareRejectedError(ValueError):
-    """The share did not contain an Instagram or LinkedIn link."""
+    """The share did not contain an allowed link."""
 
 
 def _clean_url(raw: str) -> str:
@@ -36,16 +43,18 @@ def _label(url: str) -> str:
     host = (urlparse(url).hostname or "").lower()
     if "linkedin.com" in host or host.endswith("lnkd.in"):
         return "LinkedIn"
+    if "youtube.com" in host or host.endswith("youtu.be"):
+        return "YouTube"
     return "Instagram"
 
 
 def parse_share(url: str = "", text: str = "") -> tuple[str, str, str]:
-    """Return the link, Instagram or LinkedIn, and a short note."""
+    """Return the link, a source label, and a short note."""
     blob = f"{url}\n{text}"
     found = [_clean_url(match) for match in _URL_RE.findall(blob)]
     link = next((item for item in found if _allowed(item)), "")
     if not link:
-        raise ShareRejectedError("Share an Instagram or LinkedIn link.")
+        raise ShareRejectedError("Share an Instagram, LinkedIn, or YouTube link.")
     note = text
     for item in found:
         note = note.replace(item, " ")

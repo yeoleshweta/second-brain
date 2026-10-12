@@ -1,4 +1,4 @@
-import { MessageCircle, BookOpen, Settings, CalendarDays, DollarSign, Inbox } from 'lucide-react'
+import { MessageCircle, BookOpen, Settings, CalendarDays, DollarSign, Inbox, Utensils } from 'lucide-react'
 import { BrandHeader } from '@/components/BrandHeader'
 import { RecentChats } from '@/components/RecentChats'
 import type { AppView, ChatSessionSummary } from '@/types'
@@ -35,6 +35,7 @@ export function Sidebar({
         {(
           [
             { id: 'chat' as View, icon: <MessageCircle size={16} />, label: 'Chat' },
+            { id: 'nutrition' as View, icon: <Utensils size={16} />, label: 'Nutrition' },
             { id: 'review' as View, icon: <Inbox size={16} />, label: 'Review' },
             { id: 'settings' as View, icon: <Settings size={16} />, label: 'Settings' },
           ] as const

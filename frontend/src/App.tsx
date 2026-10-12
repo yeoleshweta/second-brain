@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { MessageCircle, X, Scroll, Settings, History, Inbox } from 'lucide-react'
+import { MessageCircle, X, Scroll, Settings, History, Inbox, Utensils } from 'lucide-react'
 import { Sidebar } from '@/components/Sidebar'
 import { MessageBubble } from '@/components/MessageBubble'
 import { useChat } from '@/hooks/useChat'
@@ -11,6 +11,7 @@ import { Agenda } from '@/components/Agenda'
 import FinanceDashboard from '@/components/FinanceDashboard'
 import { SettingsView } from '@/components/SettingsView'
 import { ReviewInbox } from '@/components/ReviewInbox'
+import { NutritionView } from '@/components/NutritionView'
 import { RecentChats } from '@/components/RecentChats'
 import { VoidWordmark } from '@/components/BrandHeader'
 import { getMorningBriefLatest, listWikiPending } from '@/lib/api'
@@ -50,7 +51,7 @@ function BriefBanner({ content, onDismiss }: { content: string; onDismiss: () =>
 function EmptyState() {
   return (
     <div className="py-16 px-6 flex flex-col items-center text-center">
-      <h1><VoidWordmark className="h-14 w-[280px]" /></h1>
+      <h1 className="w-full max-w-[280px]"><VoidWordmark className="h-auto w-full" /></h1>
       {!isPlainMode() && (
         <p className="mt-6 text-sm italic text-void-muted">Quiet out there tonight.</p>
       )}
@@ -81,15 +82,16 @@ function MobileHeader({
     view === 'reading' ? 'Reading'
     : view === 'agenda' ? 'Agenda'
     : view === 'finance' ? 'Finance'
-    : view === 'settings' ? 'Settings'
+    :     view === 'settings' ? 'Settings'
     : view === 'review' ? 'Review'
+    : view === 'nutrition' ? 'Nutrition'
     : null
   return (
-    <header className="md:hidden relative shrink-0 bg-transparent flex items-center justify-between px-2 py-2 pt-safe min-h-[52px] sticky top-0 z-20">
+    <header className="md:hidden shrink-0 bg-transparent grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1 px-2 py-2 pt-safe min-h-[52px] sticky top-0 z-20">
       <button
         type="button"
         onClick={onOpenSettings}
-        className="touch-target flex items-center justify-center rounded-full text-void-text"
+        className="touch-target shrink-0 flex items-center justify-center rounded-full text-void-text"
         aria-label="Settings"
       >
         <Settings size={20} />
@@ -98,15 +100,15 @@ function MobileHeader({
         <button
           type="button"
           onClick={onLogoClick}
-          className="absolute left-1/2 -translate-x-1/2"
+          className="min-w-0 flex justify-center"
           aria-label="Start new chat"
         >
-          <VoidWordmark className="h-7 w-[168px]" />
+          <VoidWordmark className="h-6 w-full max-w-[148px]" />
         </button>
       ) : (
-        <span className="absolute left-1/2 -translate-x-1/2 text-sm font-medium text-void-muted">{label}</span>
+        <span className="min-w-0 truncate text-center text-sm font-medium text-void-muted">{label}</span>
       )}
-      <div className="flex items-center">
+      <div className="flex items-center shrink-0">
         {view === 'chat' && (
           <button
             type="button"
@@ -146,9 +148,10 @@ function BottomNav({
   reviewCount?: number
 }) {
   const tabs: { id: View; icon: React.ReactNode; label: string }[] = [
-    { id: 'chat',     icon: <MessageCircle size={20} />, label: 'Chat'     },
-    { id: 'review',   icon: <Inbox size={20} />,         label: 'Review'   },
-    { id: 'settings', icon: <Settings size={20} />,      label: 'Settings' },
+    { id: 'chat',      icon: <MessageCircle size={20} />, label: 'Chat' },
+    { id: 'nutrition', icon: <Utensils size={20} />,      label: 'Recipes' },
+    { id: 'review',    icon: <Inbox size={20} />,         label: 'Review' },
+    { id: 'settings',  icon: <Settings size={20} />,      label: 'Settings' },
   ]
   return (
     <nav className="md:hidden shrink-0 bg-paper-50/95 backdrop-blur-md border-t border-paper-200 flex pb-safe">
@@ -156,7 +159,7 @@ function BottomNav({
         <button
           key={id}
           onClick={() => onChange(id)}
-          className={`flex-1 flex flex-col items-center justify-center gap-0.5 pt-1.5 pb-1 text-[10px] font-medium transition min-h-[52px] active:scale-95 touch-manipulation ${
+          className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 pt-1.5 pb-1 text-[10px] font-medium transition min-h-[52px] active:scale-95 touch-manipulation ${
             view === id ? 'text-accent-400' : 'text-paper-400'
           }`}
         >
@@ -303,7 +306,7 @@ function App() {
       />
 
       {/* Main column */}
-      <div className="flex-1 min-h-0 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-x-hidden overflow-y-hidden">
 
         <MobileHeader
           view={view}
@@ -331,7 +334,7 @@ function App() {
             )}
             {/* Scrollable messages */}
             <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto mobile-scroll">
-              <div className="max-w-[720px] mx-auto px-3 md:px-5 py-3 md:py-4 pb-6">
+              <div className="max-w-[720px] mx-auto min-w-0 px-3 md:px-5 py-3 md:py-4 pb-6">
                 {loading ? (
                   <p className="text-sm text-paper-400 text-center py-8">Loading your chats…</p>
                 ) : (
@@ -367,6 +370,11 @@ function App() {
                         showCalendarActions={m.id === lastCalendarId && !sending}
                         onCalendarConfirm={() => handleSend('yes')}
                         onCalendarCancel={() => handleSend('no')}
+                        onPickCategory={
+                          m.id === messages[messages.length - 1]?.id
+                            ? (category) => handleSend(`file the last note as ${category}`)
+                            : undefined
+                        }
                       />
                     ))}
                   </div>
@@ -377,8 +385,8 @@ function App() {
             </div>
 
             {/* Chat input — sits above bottom nav */}
-            <div className="shrink-0 bg-paper-50/95 border-t border-paper-200 px-3 md:px-5 py-2 md:py-3 backdrop-blur-sm">
-              <div className="max-w-2xl mx-auto">
+            <div className="shrink-0 min-w-0 bg-paper-50/95 border-t border-paper-200 px-2 sm:px-3 md:px-5 py-2 md:py-3 backdrop-blur-sm">
+              <div className="max-w-[720px] mx-auto min-w-0">
                 {voice.active && (
                   <VoiceCallBar
                     phase={voice.phase}
@@ -400,6 +408,10 @@ function App() {
               </div>
             </div>
           </>
+        ) : view === 'nutrition' ? (
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <NutritionView />
+          </div>
         ) : view === 'review' ? (
           <div className="flex-1 overflow-hidden">
             <ReviewInbox />

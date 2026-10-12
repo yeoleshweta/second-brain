@@ -121,7 +121,7 @@ export function ChatInput({ onSend, disabled, voice }: Props) {
 
   return (
     <div
-      className="bg-void-surface/70 backdrop-blur-md rounded-2xl border border-white/10 overflow-hidden"
+      className="bg-void-surface/70 backdrop-blur-md rounded-2xl border border-white/10 overflow-hidden min-w-0"
       onPaste={handlePaste}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
@@ -154,7 +154,7 @@ export function ChatInput({ onSend, disabled, voice }: Props) {
         <p className="px-3 pt-2 text-[11px] text-paper-500 leading-snug">{recordError}</p>
       )}
 
-      <div className="flex items-end gap-1 px-2 py-2 sm:px-3 sm:py-2.5">
+      <div className="flex items-end gap-0.5 sm:gap-1 px-1 py-2 sm:px-3 sm:py-2.5 min-w-0">
         <button
           type="button"
           onClick={() => cameraRef.current?.click()}
@@ -207,7 +207,7 @@ export function ChatInput({ onSend, disabled, voice }: Props) {
           enterKeyHint="send"
           autoComplete="off"
           autoCorrect="on"
-          className="input-ios flex-1 resize-none bg-transparent text-base text-paper-800 placeholder:text-paper-400 outline-none leading-relaxed py-2.5 min-h-[44px] max-h-[120px]"
+          className="input-ios min-w-0 flex-1 resize-none bg-transparent text-base text-paper-800 placeholder:text-paper-400 outline-none leading-relaxed py-2.5 min-h-[44px] max-h-[120px]"
           onChange={(e) => {
             setText(e.target.value)
             autoResize()

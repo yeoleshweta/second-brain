@@ -24,6 +24,17 @@ def test_linkedin_short_link_inside_text() -> None:
     assert note == "Worth reading later"
 
 
+def test_youtube_recipe_link() -> None:
+    link, label, note = parse_share(
+        "https://www.youtube.com/watch?v=abc123",
+        "crispy chicken",
+    )
+    assert link == "https://www.youtube.com/watch?v=abc123"
+    assert label == "YouTube"
+    assert note == "crispy chicken"
+    assert "YouTube" in share_line(link, label, note)
+
+
 def test_other_sites_are_refused() -> None:
     with pytest.raises(ShareRejectedError):
         parse_share("https://example.com/post", "")

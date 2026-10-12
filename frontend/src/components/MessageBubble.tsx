@@ -4,11 +4,47 @@ import type { Components } from 'react-markdown'
 import { SuggestionPicker } from '@/components/SuggestionPicker'
 import { BookPicker } from '@/components/BookPicker'
 import { splitCaptureStatus, type CaptureChip } from '@/lib/captureStatus'
+import { linkifyMarkdown, splitLinks } from '@/lib/linkify'
 import { openExternalUrl, isExternalUrl } from '@/lib/openExternal'
 import { isPlainMode, speakReply } from '@/lib/voice'
 import type { Message } from '@/types'
 import { Volume2 } from 'lucide-react'
 
+const CATEGORIES = [
+  'food',
+  'recipe',
+  'task',
+  'idea',
+  'exercise',
+  'finance',
+  'reading',
+  'health',
+  'work',
+  'travel',
+  'link',
+]
+
+function TextWithLinks({ text, className }: { text: string; className: string }) {
+  const parts = splitLinks(text)
+  return (
+    <p className={className}>
+      {parts.map((part, index) =>
+        part.kind === 'link' ? (
+          <button
+            key={`${part.value}-${index}`}
+            type="button"
+            className="text-void-red underline underline-offset-2 break-all text-left"
+            onClick={() => openExternalUrl(part.value)}
+          >
+            {part.value}
+          </button>
+        ) : (
+          <span key={`${index}-${part.value.slice(0, 12)}`}>{part.value}</span>
+        ),
+      )}
+    </p>
+  )
+}
 const markdownLinkComponents: Components = {
   a: ({ href, children }) => {
     if (!href) return <span>{children}</span>
@@ -17,7 +53,7 @@ const markdownLinkComponents: Components = {
       return (
         <button
           type="button"
-          className="text-friends-purple underline underline-offset-2 decoration-friends-purple/40 hover:text-friends-purple-dark transition text-left"
+          className="text-void-red underline underline-offset-2 break-all text-left"
           onClick={() => openExternalUrl(href)}
         >
           {children}
@@ -25,7 +61,7 @@ const markdownLinkComponents: Components = {
       )
     }
     return (
-      <a href={href} className="text-friends-purple underline underline-offset-2">
+      <a href={href} className="text-void-red underline underline-offset-2 break-all">
         {children}
       </a>
     )
@@ -57,7 +93,13 @@ function ThinkingDots() {
   )
 }
 
-function StatusChipView({ chip }: { chip: CaptureChip }) {
+function StatusChipView({
+  chip,
+  onPickCategory,
+}: {
+  chip: CaptureChip
+  onPickCategory?: (category: string) => void
+}) {
   const [open, setOpen] = useState(false)
   const tone =
     chip.kind === 'log'
@@ -90,7 +132,7 @@ function StatusChipView({ chip }: { chip: CaptureChip }) {
     <div className="mt-2">
       <button
         type="button"
-        className={`inline-flex items-center gap-1.5 min-h-[32px] rounded-full border px-2.5 py-1 text-[13px] font-medium ${tone}`}
+        className={`inline-flex max-w-full flex-wrap items-center gap-1.5 min-h-[32px] rounded-full border px-2.5 py-1 text-[13px] font-medium ${tone}`}
         aria-label={chip.label}
         onClick={() => chip.path && setOpen((v) => !v)}
       >
@@ -104,6 +146,20 @@ function StatusChipView({ chip }: { chip: CaptureChip }) {
       </button>
       {open && chip.path && (
         <p className="mt-1 text-[12px] text-void-muted break-all">{chip.path}</p>
+      )}
+      {chip.kind === 'unsorted' && onPickCategory && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {CATEGORIES.map((category) => (
+            <button
+              key={category}
+              type="button"
+              className="min-h-[36px] rounded-full border border-white/15 px-2.5 text-[12px] text-void-text"
+              onClick={() => onPickCategory(category)}
+            >
+              {category}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -122,10 +178,13 @@ function UserBubble({ message }: { message: Message }) {
   const time = clockLabel(createdAt)
   return (
     <div className="flex justify-end py-1">
-      <div className="max-w-[85%] md:max-w-[65%]">
-        <div className="bg-void-surface/70 backdrop-blur-md text-void-text rounded-2xl px-4 py-2.5 border border-white/10">
+      <div className="max-w-[85%] md:max-w-[65%] min-w-0">
+        <div className="min-w-0 bg-void-surface/70 backdrop-blur-md text-void-text rounded-2xl px-4 py-2.5 border border-white/10">
           {content ? (
-            <p className="text-base leading-[1.45] break-words whitespace-pre-wrap">{content}</p>
+            <TextWithLinks
+              text={content}
+              className="text-base leading-[1.45] break-words [overflow-wrap:anywhere] whitespace-pre-wrap"
+            />
           ) : (
             <p className="text-base italic text-void-muted">Attachment</p>
           )}
@@ -147,11 +206,13 @@ function AssistantBubble({
   showCalendarActions,
   onCalendarConfirm,
   onCalendarCancel,
+  onPickCategory,
 }: {
   message: Message
   showCalendarActions?: boolean
   onCalendarConfirm?: () => void
   onCalendarCancel?: () => void
+  onPickCategory?: (category: string) => void
 }) {
   const { content, status, intent, obsidianPath, pendingCalendar, digestItems, suggestItems, bookItems } = message
   const isThinking = status === 'thinking' && !content
@@ -164,19 +225,19 @@ function AssistantBubble({
   return (
     <div className="flex items-start gap-2 py-1">
       <div className="flex-1 min-w-0">
-        <div className={`max-w-[85%] md:max-w-[72%] border-l-2 pl-3 ${isError ? 'border-void-static' : 'border-void-red'}`}>
+        <div className={`min-w-0 max-w-full sm:max-w-[85%] md:max-w-[72%] border-l-2 pl-3 ${isError ? 'border-void-static' : 'border-void-red'}`}>
           {isThinking ? (
             <ThinkingDots />
           ) : (
             <>
               {body && (
-                <div className="flex items-start gap-2">
-                  <div className="prose-chat min-w-0 flex-1 text-base leading-[1.45] break-words text-void-text">
-                    <ReactMarkdown components={markdownLinkComponents}>{body}</ReactMarkdown>
+                <div className="flex items-start gap-1 min-w-0">
+                  <div className="prose-chat min-w-0 flex-1 text-base leading-[1.45] break-words [overflow-wrap:anywhere] text-void-text">
+                    <ReactMarkdown components={markdownLinkComponents}>{linkifyMarkdown(body)}</ReactMarkdown>
                   </div>
                   <button
                     type="button"
-                    className="touch-target flex items-center justify-center text-void-muted"
+                    className="shrink-0 w-8 h-8 flex items-center justify-center text-void-muted"
                     aria-label="Play reply"
                     onClick={() => void speakReply(body, intent)}
                   >
@@ -187,7 +248,7 @@ function AssistantBubble({
               {chip && !plain && (
                 <p className="mt-2 text-[13px] italic text-void-muted">{chip.phrase}</p>
               )}
-              {chip && <StatusChipView chip={{ ...chip, path: chip.path || obsidianPath }} />}
+              {chip && <StatusChipView chip={{ ...chip, path: chip.path || obsidianPath }} onPickCategory={onPickCategory} />}
             </>
           )}
 
@@ -268,11 +329,13 @@ export function MessageBubble({
   showCalendarActions,
   onCalendarConfirm,
   onCalendarCancel,
+  onPickCategory,
 }: {
   message: Message
   showCalendarActions?: boolean
   onCalendarConfirm?: () => void
   onCalendarCancel?: () => void
+  onPickCategory?: (category: string) => void
 }) {
   return message.role === 'user' ? (
     <UserBubble message={message} />
@@ -282,6 +345,7 @@ export function MessageBubble({
       showCalendarActions={showCalendarActions}
       onCalendarConfirm={onCalendarConfirm}
       onCalendarCancel={onCalendarCancel}
+      onPickCategory={onPickCategory}
     />
   )
 }

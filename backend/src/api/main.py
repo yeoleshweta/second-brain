@@ -448,8 +448,9 @@ async def share_link(
     req: ShareRequest,
     db: Annotated[Session, Depends(get_session)],
 ) -> dict:
-    """Save one Instagram or LinkedIn link from the iPhone share sheet."""
+    """Save an Instagram, LinkedIn, or YouTube link from the iPhone share sheet."""
     from src.integrations.obsidian import ObsidianClient
+    from src.services.recipes import with_youtube_title
     from src.services.social_share import ShareRejectedError, parse_share, share_line
 
     try:
@@ -457,6 +458,11 @@ async def share_link(
         link, label, note = parse_share(req.url, note_src)
     except ShareRejectedError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if label == "YouTube":
+        titled = await with_youtube_title(link)
+        fetched = titled.removeprefix(link).strip(" —")
+        if fetched and fetched.lower() not in note.lower():
+            note = f"{fetched} — {note}" if note else fetched
     line = share_line(link, label, note)
     try:
         async with ObsidianClient() as client:
@@ -477,6 +483,17 @@ async def share_link(
         extra={"obsidianPath": path},
     )
     return {"ok": True, "label": label, "path": path, "session_id": chat.id, "reply": reply}
+
+
+@app.get("/api/nutrition", dependencies=[Depends(require_token)])
+async def nutrition() -> dict:
+    """Recipes saved in the void files: personal steps and YouTube links."""
+    from dataclasses import asdict
+
+    from src.services.recipes import load_recipes
+
+    recipes = await load_recipes()
+    return {"recipes": [asdict(item) for item in recipes]}
 
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB

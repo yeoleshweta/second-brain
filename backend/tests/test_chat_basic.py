@@ -106,8 +106,10 @@ def test_classify_log_type_heuristic() -> None:
     assert classify_log_type("meeting with Sarah at 3") == "task"
     assert classify_log_type("30 min workout at the gym") == "exercise"
     assert classify_log_type("30 min walk") == "exercise"
-    assert classify_log_type("I like oat milk") is None
-    assert classify_log_type("I ate lunch then spent $20") is None
+    assert classify_log_type("I like oat milk") == "milk"
+    assert classify_log_type("I ate lunch then spent $20") == "food"
+    assert classify_log_type("remember this recipe for dal: boil lentils") == "recipe"
+    assert classify_log_type("https://youtu.be/abc123 dinner idea") == "recipe"
 
 
 @pytest.mark.asyncio
@@ -216,8 +218,9 @@ async def test_append_to_inbox_unsorted_when_unparseable(vault: Path) -> None:
     assert path == f"{VOID_DIR}/{today}.md"
     body = (vault / path).read_text(encoding="utf-8")
     assert "I like oat milk" in body
-    assert "no type matched" in body
-    assert "## Unsorted" in body
+    assert "**milk**" in body
+    assert "## Log" in body
+    assert "no type matched" not in body
     daily = vault / "00-Inbox" / "Daily" / f"{today}.md"
     assert not daily.exists()
 
@@ -316,7 +319,8 @@ async def test_remember_these_saves_a_reading_list(vault: Path) -> None:
     assert result.get("pending_calendar") is None
     assert "day and time" not in (result.get("reply") or "")
     assert "Not saved" not in (result.get("reply") or "")
-    assert "Saved under Unsorted" in (result.get("reply") or "")
+    assert "Saved under Log" in (result.get("reply") or "")
+    assert "as reading" in (result.get("reply") or "")
     body = (vault / str(result["obsidian_path"])).read_text(encoding="utf-8")
     assert "Lucy Darwin" in body
     assert "Condense.io" in body

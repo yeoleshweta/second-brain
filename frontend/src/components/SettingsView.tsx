@@ -22,10 +22,9 @@ function ShareShortcutCard() {
 
   return (
     <div className="bg-paper-50 border border-paper-200 rounded-2xl p-4 space-y-3">
-      <h3 className="text-sm font-semibold text-paper-700">Instagram and LinkedIn</h3>
+      <h3 className="text-sm font-semibold text-paper-700">Instagram, LinkedIn, and YouTube</h3>
       <p className="text-xs text-paper-500 leading-relaxed">
-        Share a post to a Shortcut. The link shows up in the Shares chat and in today’s void file.
-        The Mac has to be awake and on the same Wi-Fi.
+        Share a YouTube recipe and it lands in Nutrition. Instagram and LinkedIn links stay in today’s void file.
       </p>
       <ol className="text-xs text-paper-600 leading-relaxed list-decimal pl-4 space-y-1">
         <li>Shortcuts, tap +, then the name, and turn on Show in Share Sheet. Receive URLs and Text.</li>

@@ -1,4 +1,4 @@
-import type { Attachment, ChatStreamEvent, ChatSessionSummary } from '@/types'
+import type { Attachment, ChatStreamEvent, ChatSessionSummary, SavedRecipe } from '@/types'
 
 const ACTIVE_SESSION_KEY = 'centralperk_active_session'
 /** Stored when user explicitly starts a fresh chat (don't auto-resume latest). */
@@ -35,6 +35,10 @@ function resolveApiBase(): string {
 const API_BASE = resolveApiBase()
 
 /** Address the iPhone Shortcut should POST a shared link to. */
+export function listRecipes(): Promise<{ recipes: SavedRecipe[] }> {
+  return apiFetch('/api/nutrition')
+}
+
 export function shareApiUrl(): string {
   const base = resolveApiBase()
   if (base) return `${base}/api/share`

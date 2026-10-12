@@ -39,7 +39,9 @@ Calendar, reminders, and mail are answered before you run, for the phrases
 "what's on my calendar", "my meetings", "unread email", "organize my day",
 and "remind me on October 20 at 9am to …".
 Do not say you cannot set a reminder. Do not invent meetings or mail.
-Do not send email. Do not file notes. Filing happens only after they approve in Review."""
+Do not send email. Do not file notes. Filing happens only after they approve in Review.
+Saved recipes are answered before you run. Do not invent ingredients or steps.
+A YouTube link is the video, not a written recipe, unless they typed the steps."""
 
 _NOTE_ROOTS = ("Notes", "People", "Projects", "Concepts", "Briefings", "00-Inbox", "Inbox")
 _SKIP_DIRS = {".git", ".obsidian", ".trash", "node_modules"}
@@ -222,6 +224,9 @@ async def _capture_status(message: str) -> tuple[str, str | None]:
 
     if not is_inbox_capture(message):
         return None, None
+    from src.services.recipes import with_youtube_title
+
+    message = await with_youtube_title(message)
     try:
         async with ObsidianClient() as client:
             path = await client.append_to_inbox(message, source="user")
@@ -250,8 +255,34 @@ async def run(state: AgentState) -> dict:
 
     settings = get_settings()
     message = state["user_message"]
+    from src.integrations.obsidian import ObsidianClient, refile_request
+
+    category = refile_request(message)
+    if category:
+        try:
+            async with ObsidianClient() as client:
+                filed = await client.refile_last_unsorted(category)
+        except Exception as exc:
+            logger.warning("refile failed: {}", type(exc).__name__)
+            filed = None
+        if filed:
+            return {
+                "reply": f"Saved under Log in `{filed}` as {category}.",
+                "intent": "general",
+                "obsidian_path": filed,
+            }
+        return {
+            "reply": "I don't see an unsorted note to move.",
+            "intent": "general",
+        }
     status, path = await _capture_status(message)
+    from src.services.recipes import maybe_recipe_reply
+
     calendar = await maybe_handle(message)
+    if calendar is None:
+        recipe_reply = await maybe_recipe_reply(message)
+        if recipe_reply:
+            calendar = {"reply": recipe_reply, "intent": "general"}
     if calendar is not None:
         if status:
             calendar["reply"] = f"{calendar['reply'].rstrip()}\n\n{status}"
